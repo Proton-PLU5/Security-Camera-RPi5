@@ -1,104 +1,54 @@
 """Camera capture helper.
 
-This module uses the legacy ``picamera`` (PiCamera) library to access the
-Raspberry Pi camera and yields JPEG-encoded frames as bytes. If ``picamera``
-is not available the code falls back to OpenCV's VideoCapture (useful for
-development on non-Pi machines).
-
-Public API:
-- get_frame() -> generator yielding JPEG bytes
+Uses Picamera2 (libcamera) on Raspberry Pi 5 to capture JPEG frames and yield
+them as bytes for MJPEG streaming. This file intentionally does not use the
+legacy `picamera` or OpenCV backends.
 """
 
 from typing import Generator, Tuple
 import time
+import io
+
+# Picamera2 (required)
 try:
-	from picamera import PiCamera
-	from picamera.array import PiRGBArray
-	_HAS_PICAMERA = True
+	from picamera2 import Picamera2
+	_HAS_PICAMERA2 = True
 except Exception:
-	_HAS_PICAMERA = False
-
-try:
-	import cv2
-	_HAS_OPENCV = True
-except Exception:
-	_HAS_OPENCV = False
+	_HAS_PICAMERA2 = False
 
 
-def _picamera_generator(resolution: Tuple[int, int] = (640, 480), framerate: int = 20) -> Generator[bytes, None, None]:
-	if not _HAS_PICAMERA:
-		raise RuntimeError('picamera library is not available')
+def _picamera2_generator(resolution: Tuple[int, int] = (640, 480), framerate: int = 20) -> Generator[bytes, None, None]:
+	if not _HAS_PICAMERA2:
+		raise RuntimeError('Picamera2 is not available')
 
-	camera = PiCamera()
-	camera.resolution = resolution
-	camera.framerate = framerate
-	raw = PiRGBArray(camera, size=resolution)
-
-	# give camera time to warm up
-	time.sleep(0.1)
-
-	try:
-		for frame in camera.capture_continuous(raw, format='bgr', use_video_port=True):
-			image = frame.array
-			if _HAS_OPENCV:
-				ret, jpeg = cv2.imencode('.jpg', image)
-				if ret:
-					yield jpeg.tobytes()
-			else:
-				# If OpenCV isn't present, use PIL to encode (try to import lazily)
-				try:
-					from PIL import Image
-					import io
-					img = Image.fromarray(image)
-					buf = io.BytesIO()
-					img.save(buf, format='JPEG')
-					yield buf.getvalue()
-				except Exception:
-					# cannot encode; skip frame
-					pass
-
-			raw.truncate(0)
-			raw.seek(0)
-			time.sleep(1.0 / framerate)
-	finally:
-		camera.close()
-
-
-def _opencv_generator(device: int = 0, width: int = 640, height: int = 480, framerate: int = 20) -> Generator[bytes, None, None]:
-	if not _HAS_OPENCV:
-		raise RuntimeError('OpenCV is not available')
-
-	cap = cv2.VideoCapture(device)
-	cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-	cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-
+	picam = Picamera2()
+	picam.configure(picam.create_preview_configuration({'size': resolution}))
+	picam.start()
+	stream = io.BytesIO()
 	try:
 		while True:
-			ret, frame = cap.read()
-			if not ret:
-				time.sleep(0.1)
-				continue
-			ret, jpeg = cv2.imencode('.jpg', frame)
-			if not ret:
-				continue
-			yield jpeg.tobytes()
+			# capture_file writes a JPEG to the provided file-like object
+			picam.capture_file(stream, format='jpeg')
+			data = stream.getvalue()
+			if data:
+				yield data
+			stream.seek(0)
+			stream.truncate()
 			time.sleep(1.0 / framerate)
 	finally:
-		cap.release()
+		picam.stop()
+
+
+# intentionally Picamera2-only implementation (no legacy picamera or OpenCV)
 
 
 def get_frame() -> Generator[bytes, None, None]:
-	"""Return a generator yielding JPEG frames as bytes.
+	"""Return a generator yielding JPEG frames as bytes using Picamera2.
 
-	Preference order:
-	1. picamera (PiCamera)
-	2. OpenCV VideoCapture
-
-	Raises RuntimeError if no backend is available.
+	This module requires Picamera2 (libcamera). If Picamera2 isn't
+	available a RuntimeError will be raised.
 	"""
-	if _HAS_PICAMERA:
-		return _picamera_generator()
-	if _HAS_OPENCV:
-		return _opencv_generator()
-	raise RuntimeError('No camera backend available: install picamera or opencv-python')
+	if _HAS_PICAMERA2:
+		return _picamera2_generator()
+	raise RuntimeError('Picamera2 is not available. Install picamera2 on the Raspberry Pi.')
 
