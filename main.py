@@ -1,5 +1,8 @@
-# Main file for the application
-# This is the entry point of the application
-import server
+"""Entry point for the Raspberry Pi camera webserver."""
+from server import run
 
-print("Hello, World!")
+
+if __name__ == '__main__':
+	# Start the Flask development server. On the Pi you may want to run
+	# behind a production WSGI server or systemd service.
+	run()
