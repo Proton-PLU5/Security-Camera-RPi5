@@ -3,6 +3,11 @@ from server import run
 
 
 if __name__ == '__main__':
-	# Start the Flask development server. On the Pi you may want to run
-	# behind a production WSGI server or systemd service.
-	run()
+	# Start the Flask development server with UDP discovery enabled.
+	# The camera will broadcast its presence on UDP port 12345.
+	# Customize camera_name if you have multiple cameras on the network.
+	run(
+		port=5000,
+		camera_name="Raspberry Pi Camera",
+		enable_discovery=True
+	)
