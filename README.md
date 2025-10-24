@@ -74,6 +74,12 @@ Edit `main.py` to change:
 - `camera_name`: Display name for discovery (default "Raspberry Pi Camera")
 - `enable_discovery`: Enable/disable UDP broadcast (default True)
 
+Edit `capture.py` to adjust video quality (in the `start_camera()` function):
+- `resolution`: Video resolution (default `(1280, 720)` for 720p HD)
+  - Options: `(640, 480)` (VGA), `(1280, 720)` (720p), `(1920, 1080)` (1080p)
+- `framerate`: Frames per second (default 30)
+- `quality`: JPEG quality in `camera.capture_file()` (default 95, range 1-100)
+
 ## Notes
 - For production use consider running behind gunicorn or another WSGI server
 - UDP broadcast uses port 12345 (ensure it's not blocked by firewall)

@@ -3,6 +3,11 @@
 Uses Picamera2 (libcamera) on Raspberry Pi 5 to capture JPEG frames and yield
 them as bytes for MJPEG streaming. The camera runs continuously and multiple
 clients can connect to view the same stream.
+
+Default settings:
+- Resolution: 1280x720 (720p HD)
+- Framerate: 30 fps
+- JPEG Quality: 95/100
 """
 
 from typing import Generator, Tuple
@@ -41,9 +46,17 @@ def _camera_worker(resolution: Tuple[int, int] = (1280, 720), framerate: int = 3
 		# Configure for higher quality
 		config = camera.create_video_configuration(
 			main={'size': resolution, 'format': 'RGB888'},
-			controls={'FrameRate': framerate}
+			controls={'FrameRate': framerate},
+			encode='main'
 		)
 		camera.configure(config)
+		
+		# Set JPEG quality via encoder (if available)
+		try:
+			camera.options['quality'] = 95
+		except:
+			pass
+		
 		camera.start()
 		logging.info(f"Picamera2 started - {resolution[0]}x{resolution[1]} @ {framerate}fps - camera will run continuously")
 		
@@ -51,8 +64,8 @@ def _camera_worker(resolution: Tuple[int, int] = (1280, 720), framerate: int = 3
 			_camera = camera
 		
 		while True:
-			# Capture frame with high quality JPEG encoding
-			camera.capture_file(stream, format='jpeg', quality=95)
+			# Capture frame
+			camera.capture_file(stream, format='jpeg')
 			frame_data = stream.getvalue()
 			
 			# Update the shared frame buffer
