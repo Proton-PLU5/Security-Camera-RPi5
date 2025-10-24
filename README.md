@@ -31,9 +31,22 @@ python3 -m pip install -r requirements.txt
 python3 main.py
 ```
 
+You'll be prompted:
+```
+Testing with Android emulator? (y/n):
+```
+
+**For normal operation (real device):** Type `n`
+- Server broadcasts to all devices on the network
+
+**For emulator testing:** Type `y`
+- You'll be asked for your PC's IP address (e.g., `192.168.1.100`)
+- Server sends UDP packets directly to your PC
+- The Android emulator will receive them at `10.0.2.2:12345`
+
 The server will:
 - Start HTTP server on port 5000
-- Broadcast UDP discovery packets on port 12345 every 2 seconds
+- Broadcast/send UDP discovery packets on port 12345 every 2 seconds
 - Log the camera IP and discovery info
 
 ## Access the camera
@@ -63,3 +76,4 @@ Edit `main.py` to change:
 - For production use consider running behind gunicorn or another WSGI server
 - UDP broadcast uses port 12345 (ensure it's not blocked by firewall)
 - Camera name should be unique if you have multiple cameras on the network
+- **Emulator testing**: Android emulators map the host PC's IP to `10.0.2.2`, so the camera sends packets directly to your PC's IP when in emulator mode

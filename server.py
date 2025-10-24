@@ -36,7 +36,12 @@ def mjpeg_stream(generator):
 
 @app.route('/video_feed')
 def video_feed():
-        return mjpeg_stream(capture.get_frame())
+	"""Stream MJPEG video feed. Each connection gets a fresh camera instance."""
+	try:
+		return mjpeg_stream(capture.get_frame())
+	except Exception as e:
+		logging.error(f"Error starting video feed: {e}")
+		return Response(f"Error: {str(e)}", status=500)
 
 
 def get_local_ip():
@@ -52,7 +57,7 @@ def get_local_ip():
         return "127.0.0.1"
 
 
-def udp_broadcast_worker(camera_name, server_port, broadcast_port=12345, interval=2):
+def udp_broadcast_worker(camera_name, server_port, broadcast_port=12345, interval=2, emulator_mode=False, emulator_ip=None):
     """Broadcast UDP discovery packets so apps can find this camera.
     
     Args:
@@ -60,6 +65,8 @@ def udp_broadcast_worker(camera_name, server_port, broadcast_port=12345, interva
         server_port: HTTP port where the camera server is running
         broadcast_port: UDP port to broadcast on (default 12345)
         interval: Seconds between broadcasts (default 2)
+        emulator_mode: If True, send directly to emulator_ip instead of broadcast
+        emulator_ip: IP address of the PC running the Android emulator
     """
     local_ip = get_local_ip()
     
@@ -71,14 +78,21 @@ def udp_broadcast_worker(camera_name, server_port, broadcast_port=12345, interva
     })
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     
-    logging.info(f"Starting UDP broadcast on port {broadcast_port}")
-    logging.info(f"Broadcasting: {message}")
+    if emulator_mode and emulator_ip:
+        logging.info(f"Emulator mode: Sending UDP packets directly to {emulator_ip}:{broadcast_port}")
+        logging.info(f"Your emulator will receive this at 10.0.2.2 (mapped from {emulator_ip})")
+        target = (emulator_ip, broadcast_port)
+    else:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        logging.info(f"Starting UDP broadcast on port {broadcast_port}")
+        target = ('<broadcast>', broadcast_port)
+    
+    logging.info(f"Sending: {message}")
     
     try:
         while True:
-            sock.sendto(message.encode('utf-8'), ('<broadcast>', broadcast_port))
+            sock.sendto(message.encode('utf-8'), target)
             time.sleep(interval)
     except Exception as e:
         logging.error(f"UDP broadcast error: {e}")
@@ -86,7 +100,7 @@ def udp_broadcast_worker(camera_name, server_port, broadcast_port=12345, interva
         sock.close()
 
 
-def run(host='0.0.0.0', port=5000, camera_name="Raspberry Pi Camera", enable_discovery=True):
+def run(host='0.0.0.0', port=5000, camera_name="Raspberry Pi Camera", enable_discovery=True, emulator_mode=False, emulator_ip=None):
     """Start the Flask server and optionally the UDP discovery broadcast.
     
     Args:
@@ -94,16 +108,23 @@ def run(host='0.0.0.0', port=5000, camera_name="Raspberry Pi Camera", enable_dis
         port: HTTP port for the server (default 5000)
         camera_name: Display name for UDP discovery (default "Raspberry Pi Camera")
         enable_discovery: Whether to enable UDP discovery broadcast (default True)
+        emulator_mode: If True, send UDP directly to emulator_ip instead of broadcast
+        emulator_ip: IP address of the PC running the Android emulator (e.g., "192.168.1.100")
     """
     if enable_discovery:
         # Start UDP broadcast in a daemon thread
         broadcast_thread = threading.Thread(
             target=udp_broadcast_worker,
             args=(camera_name, port),
+            kwargs={'emulator_mode': emulator_mode, 'emulator_ip': emulator_ip},
             daemon=True
         )
         broadcast_thread.start()
-        logging.info(f"Camera '{camera_name}' is discoverable via UDP on port 12345")
+        
+        if emulator_mode and emulator_ip:
+            logging.info(f"Camera '{camera_name}' is discoverable by Android emulator at {emulator_ip}")
+        else:
+            logging.info(f"Camera '{camera_name}' is discoverable via UDP on port 12345")
     
     logging.info(f"Starting Flask server on {host}:{port}")
     app.run(host=host, port=port, threaded=True)
