@@ -4,6 +4,8 @@ This project captures frames from a Raspberry Pi camera using Picamera2 and stre
 
 ## Features
 - MJPEG video streaming via HTTP
+- Continuous camera operation - no start/stop between clients
+- Multiple simultaneous viewers supported
 - UDP broadcast discovery (port 12345)
 - Picamera2 support for Raspberry Pi 5
 - Simple web interface

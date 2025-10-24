@@ -25,9 +25,15 @@ def index():
 
 
 def gen(generator):
-    for frame in generator:
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+    """Generate MJPEG frames with proper error handling."""
+    try:
+        for frame in generator:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+    except GeneratorExit:
+        logging.info("Client disconnected from stream")
+    except Exception as e:
+        logging.error(f"Error in frame generator: {e}")
 
 
 def mjpeg_stream(generator):
