@@ -28,7 +28,7 @@ _frame_lock = threading.Lock()
 _camera_thread = None
 
 
-def _camera_worker(resolution: Tuple[int, int] = (640, 480), framerate: int = 20):
+def _camera_worker(resolution: Tuple[int, int] = (1280, 720), framerate: int = 30):
 	"""Background thread that continuously captures frames from the camera."""
 	global _camera, _current_frame
 	
@@ -37,16 +37,22 @@ def _camera_worker(resolution: Tuple[int, int] = (640, 480), framerate: int = 20
 	try:
 		logging.info("Initializing Picamera2 in background thread...")
 		camera = Picamera2()
-		camera.configure(camera.create_preview_configuration({'size': resolution}))
+		
+		# Configure for higher quality
+		config = camera.create_video_configuration(
+			main={'size': resolution, 'format': 'RGB888'},
+			controls={'FrameRate': framerate}
+		)
+		camera.configure(config)
 		camera.start()
-		logging.info("Picamera2 started successfully - camera will run continuously")
+		logging.info(f"Picamera2 started - {resolution[0]}x{resolution[1]} @ {framerate}fps - camera will run continuously")
 		
 		with _camera_lock:
 			_camera = camera
 		
 		while True:
-			# Capture frame
-			camera.capture_file(stream, format='jpeg')
+			# Capture frame with high quality JPEG encoding
+			camera.capture_file(stream, format='jpeg', quality=95)
 			frame_data = stream.getvalue()
 			
 			# Update the shared frame buffer
@@ -71,8 +77,13 @@ def _camera_worker(resolution: Tuple[int, int] = (640, 480), framerate: int = 20
 				_camera = None
 
 
-def start_camera(resolution: Tuple[int, int] = (640, 480), framerate: int = 20):
-	"""Start the camera in a background thread if not already running."""
+def start_camera(resolution: Tuple[int, int] = (1280, 720), framerate: int = 30):
+	"""Start the camera in a background thread if not already running.
+	
+	Args:
+		resolution: Video resolution (default 1280x720 for 720p HD)
+		framerate: Frames per second (default 30)
+	"""
 	global _camera_thread
 	
 	if _camera_thread is not None and _camera_thread.is_alive():
