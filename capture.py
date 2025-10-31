@@ -168,44 +168,36 @@ def get_frame() -> Generator[bytes, None, None]:
 				frame = _current_frame
 			
 			if frame is not None:
-				# Send the frame for processing and annotation
-				# Make the frame into right format for processing
-				# The utils.getInference function expects raw image bytes
-				process.add_task(frame)
+				# Send the frame for processing only if not currently processing
+				if not process.is_busy():
+					process.add_task(frame)
 
-				# Retrieve the latest processed bounding boxes
-				boxes = process.get_latest_bounding_boxes()
+				# Retrieve the latest processed result
+				result = process.get_latest_bounding_boxes()
 
-				# Draw boxes on the frame
-				if boxes is not None and len(boxes) > 0:
-					from PIL import Image, ImageDraw
+				# Draw boxes on the frame using YOLO's built-in plotter
+				if result is not None and result.boxes is not None and len(result.boxes) > 0:
+					from PIL import Image
 					import numpy as np
 					
 					# Convert bytes to PIL Image
 					image = Image.open(io.BytesIO(frame))
-					draw = ImageDraw.Draw(image)
 					
-					logging.info(f"Drawing {len(boxes)} bounding boxes")
+					# Convert PIL to numpy array for YOLO plotting
+					img_array = np.array(image)
 					
-					# Draw each bounding box
-					for box in boxes:
-						x, y, w, h = box.tolist()
-						left = x - w / 2
-						top = y - h / 2
-						right = x + w / 2
-						bottom = y + h / 2
-						
-						logging.debug(f"Box: x={x}, y={y}, w={w}, h={h} -> [{left}, {top}, {right}, {bottom}]")
-						
-						# Draw thicker red rectangle
-						draw.rectangle([left, top, right, bottom], outline="red", width=5)
+					# Use YOLO's built-in plot method to draw boxes
+					annotated_img = result.plot(img=img_array, line_width=2, font_size=12)
 					
-					# Convert back to bytes
+					# Convert back to PIL Image
+					image = Image.fromarray(annotated_img)
+					
+					# Convert to bytes
 					buf = io.BytesIO()
 					image.save(buf, format='JPEG')
 					frame = buf.getvalue()
-				elif boxes is not None:
-					logging.debug(f"No objects detected in frame")
+					
+					logging.info(f"Drew {len(result.boxes)} bounding boxes using YOLO plotter")
 
 				# Prepare MJPEG frame
 				yield frame

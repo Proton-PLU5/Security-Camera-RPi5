@@ -4,15 +4,21 @@ import queue
 import logging
 
 # Thread-safe backlog for processing tasks
-backlog = queue.Queue()
+backlog = queue.Queue(maxsize=1)  # Only allow 1 frame in queue at a time
 latest_result = None
 running = True
+is_processing = False  # Flag to track if currently processing
 
 logging.basicConfig(level=logging.INFO)
 
 def add_task(task):
-    """Put a task into the backlog (thread-safe)."""
-    backlog.put(task)
+    """Put a task into the backlog (thread-safe). Only adds if not currently processing."""
+    global is_processing
+    if not is_processing:
+        try:
+            backlog.put_nowait(task)  # Non-blocking put
+        except queue.Full:
+            pass  # Skip this frame if queue is full
 
 def get_task(block=True, timeout=None):
     """Get a task (or None if empty when timeout occurs)."""
@@ -37,29 +43,39 @@ def stop_processing():
 
 def process_backlog():
     """Process tasks from the backlog queue."""
-    global running, latest_result
+    global running, latest_result, is_processing
     logging.info("Processing thread started")
     while running:
         task = get_task()
         if task is None:
             break
         
+        is_processing = True
+        
         # Process the image passed.
         result = utils.getInference(task)
         whitelist = []  # Empty list = show all detected objects
-        boxes = utils.filterBoundingBoxes(result, whitelist)
-
-        logging.info(f"Detected {len(boxes)} objects (whitelist: {whitelist if len(whitelist) > 0 else 'all objects'})")
         
-        latest_result = boxes
+        # Store the entire result object instead of just boxes
+        latest_result = result
+        
+        num_detections = len(result.boxes) if result.boxes is not None else 0
+        logging.info(f"Detected {num_detections} objects")
 
         task_done()
+        is_processing = False
+        
     logging.info("Processing thread stopped")
 
 def get_latest_bounding_boxes():
-    """Return the latest processed bounding boxes."""
+    """Return the latest processed result object."""
     global latest_result
     return latest_result
+
+def is_busy():
+    """Check if currently processing a frame."""
+    global is_processing
+    return is_processing
 
 def start_processing():
     """Start the processing thread."""
