@@ -31,6 +31,40 @@ def mjpeg_stream(generator):
         return Response(gen(generator), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
+@app.route('/')
+def index():
+	"""Serve the index page with the video feed."""
+	html = """<!doctype html>
+<html>
+    <head>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            
+            html, body {
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+            }
+            
+            img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+            }
+        </style>
+    </head>
+    <body>
+        <img src="/video_feed" alt="Live feed" />
+    </body>
+</html>"""
+	return html
+
+
 @app.route('/video_feed')
 def video_feed():
 	"""Stream MJPEG video feed. Each connection gets a fresh camera instance."""
