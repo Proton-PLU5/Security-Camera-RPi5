@@ -1,27 +1,39 @@
 """Entry point for the Raspberry Pi camera webserver."""
 from server import run
+import capture
+import process
+import atexit
+import signal
+import sys
+
+
+def cleanup():
+	"""Cleanup function to stop all threads gracefully."""
+	print("\n\nShutting down...")
+	process.stop_processing()
+	capture.stop_camera()
+	print("Cleanup complete. Goodbye!")
+
+
+def signal_handler(sig, frame):
+	"""Handle Ctrl+C and other termination signals."""
+	cleanup()
+	sys.exit(0)
 
 
 if __name__ == '__main__':
-	# Ask user if testing with Android emulator
-	emulator_mode = input("Testing with Android emulator? (y/n): ").lower().strip() == 'y'
+	# Register cleanup handlers
+	atexit.register(cleanup)
+	signal.signal(signal.SIGINT, signal_handler)
+	signal.signal(signal.SIGTERM, signal_handler)
 	
-	emulator_ip = None
-	if emulator_mode:
-		emulator_ip = input("Enter your PC's IP address (where emulator is running): ").strip()
-		print(f"\n✓ Emulator mode enabled")
-		print(f"✓ Sending UDP packets to {emulator_ip}:12345")
-		print(f"✓ Your emulator will receive these at 10.0.2.2:12345\n")
-	else:
-		print("\n✓ Broadcasting to all devices on the network\n")
+	print("Starting Raspberry Pi Camera Server...")
+	print("Broadcasting to all devices on the network\n")
 	
 	# Start the Flask development server with UDP discovery enabled.
 	# The camera will broadcast its presence on UDP port 12345.
-	# Customize camera_name if you have multiple cameras on the network.
 	run(
 		port=5000,
 		camera_name="Raspberry Pi Camera",
-		enable_discovery=True,
-		emulator_mode=emulator_mode,
-		emulator_ip=emulator_ip
+		enable_discovery=True
 	)

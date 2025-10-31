@@ -23,13 +23,18 @@ def task_done():
     backlog.task_done()
 
 def stop_processing():
-    # Stop the processing thread
+    """Stop the processing thread gracefully."""
     global running, processing_thread
     running = False
-    processing_thread.join()
+    # Add a sentinel value to unblock the queue.get() if it's waiting
+    backlog.put(None)
+    # Wait for the thread to finish
+    if processing_thread is not None and processing_thread.is_alive():
+        processing_thread.join(timeout=2)
 
 def process_backlog():
-    global running
+    """Process tasks from the backlog queue."""
+    global running, latest_result
     while running:
         task = get_task()
         if task is None:
@@ -40,7 +45,6 @@ def process_backlog():
         whitelist = ["person", "bear"]
         boxes = utils.filterBoundingBoxes(result, whitelist)
 
-        global latest_result
         latest_result = boxes
 
         task_done()
@@ -50,4 +54,11 @@ def get_latest_bounding_boxes():
     global latest_result
     return latest_result
 
-processing_thread = threading.Thread(target=process_backlog)
+def start_processing():
+    """Start the processing thread."""
+    global processing_thread
+    processing_thread = threading.Thread(target=process_backlog, daemon=True)
+    processing_thread.start()
+
+# Start the processing thread on module import
+start_processing()

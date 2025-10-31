@@ -32,11 +32,12 @@ _camera_lock = threading.Lock()
 _current_frame = None
 _frame_lock = threading.Lock()
 _camera_thread = None
+_stop_camera = False
 
 
 def _camera_worker(resolution: Tuple[int, int] = (1280, 720), framerate: int = 30):
 	"""Background thread that continuously captures frames from the camera."""
-	global _camera, _current_frame
+	global _camera, _current_frame, _stop_camera
 	
 	stream = io.BytesIO()
 	
@@ -64,7 +65,7 @@ def _camera_worker(resolution: Tuple[int, int] = (1280, 720), framerate: int = 3
 		with _camera_lock:
 			_camera = camera
 		
-		while True:
+		while not _stop_camera:
 			# Capture frame
 			camera.capture_file(stream, format='jpeg')
 			frame_data = stream.getvalue()
@@ -98,12 +99,13 @@ def start_camera(resolution: Tuple[int, int] = (1280, 720), framerate: int = 30)
 		resolution: Video resolution (default 1280x720 for 720p HD)
 		framerate: Frames per second (default 30)
 	"""
-	global _camera_thread
+	global _camera_thread, _stop_camera
 	
 	if _camera_thread is not None and _camera_thread.is_alive():
 		logging.info("Camera already running")
 		return
 	
+	_stop_camera = False
 	_camera_thread = threading.Thread(
 		target=_camera_worker,
 		args=(resolution, framerate),
@@ -119,6 +121,30 @@ def start_camera(resolution: Tuple[int, int] = (1280, 720), framerate: int = 30)
 	
 	if _camera is None:
 		raise RuntimeError("Failed to initialize camera")
+
+
+def stop_camera():
+	"""Stop the camera thread gracefully."""
+	global _camera, _camera_thread, _stop_camera
+	
+	logging.info("Stopping camera...")
+	_stop_camera = True
+	
+	# Wait for camera thread to finish
+	if _camera_thread is not None:
+		_camera_thread.join(timeout=2)
+		_camera_thread = None
+	
+	# Cleanup camera
+	with _camera_lock:
+		if _camera is not None:
+			try:
+				_camera.stop()
+				_camera.close()
+				logging.info("Camera stopped and cleaned up")
+			except:
+				pass
+			_camera = None
 
 
 def get_frame() -> Generator[bytes, None, None]:
