@@ -45,6 +45,10 @@ def process_backlog():
     """Process tasks from the backlog queue."""
     global running, latest_result, is_processing
     logging.info("Processing thread started")
+    
+    # Configure which classes to detect
+    whitelist = ["person", "dog", "cat", "bear", "bird"]  # Add or remove classes as needed
+    
     while running:
         task = get_task()
         if task is None:
@@ -54,13 +58,20 @@ def process_backlog():
         
         # Process the image passed.
         result = utils.getInference(task)
-        whitelist = []  # Empty list = show all detected objects
         
-        # Store the entire result object instead of just boxes
+        # Filter the result to only show whitelisted classes
+        if len(whitelist) > 0:
+            result = utils.filterResult(result, whitelist)
+        
+        # Store the filtered result object
         latest_result = result
         
         num_detections = len(result.boxes) if result.boxes is not None else 0
-        logging.info(f"Detected {num_detections} objects")
+        if num_detections > 0:
+            detected_classes = [result.names[int(cls)] for cls in result.boxes.cls]
+            logging.info(f"Detected {num_detections} objects: {detected_classes}")
+        else:
+            logging.debug(f"No objects detected")
 
         task_done()
         is_processing = False

@@ -33,6 +33,7 @@ _current_frame = None
 _frame_lock = threading.Lock()
 _camera_thread = None
 _stop_camera = False
+_stop_streaming = False  # Flag to stop all streaming generators
 
 
 def _camera_worker(resolution: Tuple[int, int] = (1280, 720), framerate: int = 30):
@@ -99,13 +100,14 @@ def start_camera(resolution: Tuple[int, int] = (1280, 720), framerate: int = 30)
 		resolution: Video resolution (default 1280x720 for 720p HD)
 		framerate: Frames per second (default 30)
 	"""
-	global _camera_thread, _stop_camera
+	global _camera_thread, _stop_camera, _stop_streaming
 	
 	if _camera_thread is not None and _camera_thread.is_alive():
 		logging.info("Camera already running")
 		return
 	
 	_stop_camera = False
+	_stop_streaming = False  # Reset streaming flag when starting camera
 	_camera_thread = threading.Thread(
 		target=_camera_worker,
 		args=(resolution, framerate),
@@ -125,10 +127,11 @@ def start_camera(resolution: Tuple[int, int] = (1280, 720), framerate: int = 30)
 
 def stop_camera():
 	"""Stop the camera thread gracefully."""
-	global _camera, _camera_thread, _stop_camera
+	global _camera, _camera_thread, _stop_camera, _stop_streaming
 	
 	logging.info("Stopping camera...")
 	_stop_camera = True
+	_stop_streaming = True  # Stop all streaming generators
 	
 	# Wait for camera thread to finish
 	if _camera_thread is not None:
@@ -162,7 +165,7 @@ def get_frame() -> Generator[bytes, None, None]:
 	logging.info("Client connected to video stream")
 	
 	try:
-		while True:
+		while not _stop_streaming:
 			# Get the current frame
 			with _frame_lock:
 				frame = _current_frame
@@ -196,8 +199,6 @@ def get_frame() -> Generator[bytes, None, None]:
 					buf = io.BytesIO()
 					image.save(buf, format='JPEG')
 					frame = buf.getvalue()
-					
-					logging.info(f"Drew {len(result.boxes)} bounding boxes using YOLO plotter")
 
 				# Prepare MJPEG frame
 				yield frame
