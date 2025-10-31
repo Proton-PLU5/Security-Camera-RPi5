@@ -177,13 +177,15 @@ def get_frame() -> Generator[bytes, None, None]:
 				boxes = process.get_latest_bounding_boxes()
 
 				# Draw boxes on the frame
-				if boxes is not None:
+				if boxes is not None and len(boxes) > 0:
 					from PIL import Image, ImageDraw
 					import numpy as np
 					
 					# Convert bytes to PIL Image
 					image = Image.open(io.BytesIO(frame))
 					draw = ImageDraw.Draw(image)
+					
+					logging.info(f"Drawing {len(boxes)} bounding boxes")
 					
 					# Draw each bounding box
 					for box in boxes:
@@ -192,12 +194,18 @@ def get_frame() -> Generator[bytes, None, None]:
 						top = y - h / 2
 						right = x + w / 2
 						bottom = y + h / 2
-						draw.rectangle([left, top, right, bottom], outline="red", width=3)
+						
+						logging.debug(f"Box: x={x}, y={y}, w={w}, h={h} -> [{left}, {top}, {right}, {bottom}]")
+						
+						# Draw thicker red rectangle
+						draw.rectangle([left, top, right, bottom], outline="red", width=5)
 					
 					# Convert back to bytes
 					buf = io.BytesIO()
 					image.save(buf, format='JPEG')
 					frame = buf.getvalue()
+				elif boxes is not None:
+					logging.debug(f"No objects detected in frame")
 
 				# Prepare MJPEG frame
 				yield frame

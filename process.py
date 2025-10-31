@@ -1,11 +1,14 @@
 import threading
 import utils
 import queue
+import logging
 
 # Thread-safe backlog for processing tasks
 backlog = queue.Queue()
 latest_result = None
 running = True
+
+logging.basicConfig(level=logging.INFO)
 
 def add_task(task):
     """Put a task into the backlog (thread-safe)."""
@@ -35,6 +38,7 @@ def stop_processing():
 def process_backlog():
     """Process tasks from the backlog queue."""
     global running, latest_result
+    logging.info("Processing thread started")
     while running:
         task = get_task()
         if task is None:
@@ -42,12 +46,15 @@ def process_backlog():
         
         # Process the image passed.
         result = utils.getInference(task)
-        whitelist = ["person", "bear"]
+        whitelist = []  # Empty list = show all detected objects
         boxes = utils.filterBoundingBoxes(result, whitelist)
 
+        logging.info(f"Detected {len(boxes)} objects (whitelist: {whitelist if len(whitelist) > 0 else 'all objects'})")
+        
         latest_result = boxes
 
         task_done()
+    logging.info("Processing thread stopped")
 
 def get_latest_bounding_boxes():
     """Return the latest processed bounding boxes."""

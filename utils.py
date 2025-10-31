@@ -1,5 +1,7 @@
 from ultralytics import YOLO
 import torch
+from PIL import Image
+import io
 
 model_name = "yolo11n.pt"
 MODEL = YOLO(model_name)
@@ -9,7 +11,17 @@ def setModelName(name: str):
     global MODEL
     MODEL = YOLO(name)
 
-def getInference(img : str):
+def getInference(img):
+    """
+    Run inference on an image.
+    
+    Args:
+        img: Can be a file path (str), PIL Image, numpy array, or image bytes
+    """
+    # If img is bytes, convert to PIL Image
+    if isinstance(img, bytes):
+        img = Image.open(io.BytesIO(img))
+    
     results = MODEL(img)
     return results[0]
 
