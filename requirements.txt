@@ -1,5 +1,7 @@
 flask
 opencv-python
+ultralytics
+torch
 # On Raspberry Pi OS (Bullseye/Bookworm) install picamera2 dependencies via apt
 # and then install the Picamera2 pip package or use the system package:
 # sudo apt update

@@ -15,6 +15,7 @@ import time
 import io
 import logging
 import threading
+import process
 
 # Picamera2 (required)
 try:
@@ -141,6 +142,38 @@ def get_frame() -> Generator[bytes, None, None]:
 				frame = _current_frame
 			
 			if frame is not None:
+				# Send the frame for processing and annotation
+				# Make the frame into right format for processing
+				# The utils.getInference function expects raw image bytes
+				process.add_task(frame)
+
+				# Retrieve the latest processed bounding boxes
+				boxes = process.get_latest_bounding_boxes()
+
+				# Draw boxes on the frame
+				if boxes is not None:
+					from PIL import Image, ImageDraw
+					import numpy as np
+					
+					# Convert bytes to PIL Image
+					image = Image.open(io.BytesIO(frame))
+					draw = ImageDraw.Draw(image)
+					
+					# Draw each bounding box
+					for box in boxes:
+						x, y, w, h = box.tolist()
+						left = x - w / 2
+						top = y - h / 2
+						right = x + w / 2
+						bottom = y + h / 2
+						draw.rectangle([left, top, right, bottom], outline="red", width=3)
+					
+					# Convert back to bytes
+					buf = io.BytesIO()
+					image.save(buf, format='JPEG')
+					frame = buf.getvalue()
+
+				# Prepare MJPEG frame
 				yield frame
 			
 			# Small delay to avoid consuming too much CPU
