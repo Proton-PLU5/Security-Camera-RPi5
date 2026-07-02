@@ -1,121 +1,134 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Camera WebRTC Viewer</title>
+<meta charset="UTF-8">
+<title>Camera Viewer</title>
 
-  <style>
-    body {
-      margin: 0;
-      background: #111;
-      color: #fff;
-      font-family: sans-serif;
-      text-align: center;
-    }
+<style>
+body {
+    margin: 0;
+    background: #111;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+}
 
-    h2 {
-      margin: 12px;
-    }
+h2 {
+    margin: 16px;
+}
 
-    video {
-      width: 95vw;
-      max-width: 1200px;
-      background: black;
-      border-radius: 8px;
-    }
+video {
+    width: 95vw;
+    max-width: 1200px;
+    background: black;
+    border: 1px solid #444;
+}
 
-    #status {
-      margin: 10px;
-      color: #7fd4ff;
-    }
-  </style>
+#status {
+    margin: 16px;
+    font-size: 16px;
+}
+</style>
 </head>
 
 <body>
 
-  <h2>Live Stream</h2>
-  <video id="video" autoplay playsinline muted></video>
-  <div id="status">Connecting...</div>
+<h2>Live Camera</h2>
+
+<video id="video" autoplay playsinline controls></video>
+
+<div id="status">Starting...</div>
 
 <script>
+
 const video = document.getElementById("video");
-const statusEl = document.getElementById("status");
+const status = document.getElementById("status");
 
-function setStatus(msg) {
-  console.log(msg);
-  statusEl.textContent = msg;
-}
-
-async function waitForIceGathering(pc) {
-  if (pc.iceGatheringState === "complete") return;
-
-  await new Promise(resolve => {
-    const check = () => {
-      if (pc.iceGatheringState === "complete") {
-        pc.removeEventListener("icegatheringstatechange", check);
-        resolve();
-      }
-    };
-    pc.addEventListener("icegatheringstatechange", check);
-  });
+function log(msg) {
+    console.log(msg);
+    status.textContent = msg;
 }
 
 async function start() {
-  const pc = new RTCPeerConnection({
-    iceServers: [] // LAN-only setup (good for Raspberry Pi)
-  });
 
-  pc.addTransceiver("video", { direction: "recvonly" });
+    const pc = new RTCPeerConnection();
 
-  pc.ontrack = (event) => {
-    setStatus("Video received");
-    video.srcObject = event.streams[0];
-  };
+    pc.addTransceiver("video", {
+        direction: "recvonly"
+    });
 
-  pc.onconnectionstatechange = () => {
-    setStatus("Connection: " + pc.connectionState);
+    pc.ontrack = (event) => {
+        console.log("Received video track");
+        video.srcObject = event.streams[0];
+        video.play().catch(console.error);
+    };
 
-    if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-      setTimeout(start, 2000);
+    pc.onconnectionstatechange = () => {
+        log("Connection: " + pc.connectionState);
+    };
+
+    pc.oniceconnectionstatechange = () => {
+        console.log("ICE:", pc.iceConnectionState);
+    };
+
+    pc.onicegatheringstatechange = () => {
+        console.log("ICE gathering:", pc.iceGatheringState);
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // Wait until ICE gathering completes
+    await new Promise(resolve => {
+        if (pc.iceGatheringState === "complete") {
+            resolve();
+            return;
+        }
+
+        function check() {
+            if (pc.iceGatheringState === "complete") {
+                pc.removeEventListener(
+                    "icegatheringstatechange",
+                    check
+                );
+                resolve();
+            }
+        }
+
+        pc.addEventListener(
+            "icegatheringstatechange",
+            check
+        );
+    });
+
+    log("Sending offer...");
+
+    const response = await fetch("/offer", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(pc.localDescription)
+    });
+
+    if (!response.ok) {
+        throw new Error(
+            `HTTP ${response.status}: ${await response.text()}`
+        );
     }
-  };
 
-  pc.oniceconnectionstatechange = () => {
-    console.log("ICE:", pc.iceConnectionState);
-  };
+    const answer = await response.json();
 
-  pc.onicecandidate = (e) => {
-    if (e.candidate) console.log("ICE candidate:", e.candidate);
-  };
+    await pc.setRemoteDescription(answer);
 
-  setStatus("Creating offer...");
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  await waitForIceGathering(pc);
-
-  setStatus("Sending offer...");
-
-  // IMPORTANT FIX: relative URL avoids http://:8080 bug completely
-  const response = await fetch("/offer", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(pc.localDescription)
-  });
-
-  const answer = await response.json();
-  await pc.setRemoteDescription(answer);
-
-  setStatus("Connected");
+    log("Waiting for video...");
 }
 
 start().catch(err => {
-  console.error(err);
-  setStatus("Error: " + err);
+    console.error(err);
+    log(err.toString());
 });
+
 </script>
 
 </body>
