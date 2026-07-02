@@ -105,6 +105,7 @@ class StreamThread(threading.Thread):
 
     async def serve(self):
         app = web.Application()
+        app.router.add_get("/", self.index)
         app.router.add_post("/offer", self.handle_offer)
         self.runner = web.AppRunner(app)
         await self.runner.setup()
@@ -146,3 +147,6 @@ class StreamThread(threading.Thread):
         self.pcs.clear()
         if self.runner is not None:
             await self.runner.cleanup()
+
+    async def index(self, request: web.Request) -> web.FileResponse:
+        return web.FileResponse("stream/viewer.html")
