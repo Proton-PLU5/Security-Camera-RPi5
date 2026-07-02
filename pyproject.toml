@@ -9,11 +9,14 @@ dependencies = [
     "aiortc>=1.14.0",
     "picamera2>=0.3.36",
     "ultralytics-opencv-headless>=8.4.84",
+    "torch>=2.10,<2.13",
+    "torchvision>=0.2",
 ]
+
 [tool.uv]
 override-dependencies = [
     "opencv-python<5.0.0",
-    "opencv-python-headless<5.0.0"
+    "opencv-python-headless<5.0.0",
 ]
 
 [[tool.uv.index]]
