@@ -8,13 +8,14 @@ import threading
 import os
 from capture.mailbox import MailBox
 from data.storage import StorageThread
+from stream.frame_buffer import FrameBuffer
 
 logger = logging.getLogger(__name__)
 
 class CaptureThread(threading.Thread):
     def __init__(self,
                  detection_mailbox: MailBox,
-                 stream_mailbox: MailBox,
+                 stream_buffer: FrameBuffer,
                  storage_thread: StorageThread,
                  video_size: tuple[int, int] = (1920, 1080),
                  lowres_size: tuple[int, int] = (640, 640),
@@ -25,7 +26,7 @@ class CaptureThread(threading.Thread):
         super().__init__(daemon=True, name="CaptureThread")
 
         self.detection_mailbox = detection_mailbox
-        self.stream_mailbox = stream_mailbox
+        self.stream_buffer = stream_buffer
         self.clip_dir = clip_dir
         self.clip_length = clip_length
         self.storage_thread = storage_thread
@@ -64,7 +65,7 @@ class CaptureThread(threading.Thread):
                     request.release()
 
                 self.detection_mailbox.put((lowres_frame, timestamp, self.latest_clip_id))
-                self.stream_mailbox.put(stream_frame)
+                self.stream_buffer.put(stream_frame)
         except Exception as e:
             logger.error(f"Error in CaptureThread: {e}")
         finally:

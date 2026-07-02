@@ -10,6 +10,7 @@ import numpy as np
 
 from capture.detection.detect import Detection, DetectionStore
 from capture.mailbox import MailBox
+from stream.frame_buffer import FrameBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -51,16 +52,16 @@ def draw_detections(frame: np.ndarray, detection: Optional[Detection], lores_siz
     return frame
 
 class CameraVideoTrack(VideoStreamTrack):
-    def __init__(self, mailbox: MailBox, detection_store: DetectionStore, lowres_size: Tuple[int, int] = (640, 640)):
+    def __init__(self, buffer: FrameBuffer, detection_store: DetectionStore, lowres_size: Tuple[int, int] = (640, 640)):
         super().__init__()
-        self.mailbox = mailbox
+        self.buffer = buffer
         self.detection_store = detection_store
         self.lowres_size = lowres_size
 
     async def recv(self) -> VideoFrame:
         pts, time_base = await self.next_timestamp()
 
-        frame = await asyncio.to_thread(self.mailbox.get, 0)
+        frame = await asyncio.to_thread(self.buffer.get)
         if frame is None:
             frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
         else:
@@ -78,9 +79,9 @@ class CameraVideoTrack(VideoStreamTrack):
 
 
 class StreamThread(threading.Thread):
-    def __init__(self, mailbox: MailBox, detection_store: DetectionStore, host: str = '0.0.0.0', port: int = 8080):
+    def __init__(self, buffer: FrameBuffer, detection_store: DetectionStore, host: str = '0.0.0.0', port: int = 8080):
         super().__init__(daemon=True, name="StreamThread")
-        self.mailbox = mailbox
+        self.buffer = buffer
         self.detection_store = detection_store
         self.stop_event = threading.Event()
         self.host = host
@@ -132,7 +133,7 @@ class StreamThread(threading.Thread):
                 self.pcs.discard(pc)
 
         # Add a video track that reads from the mailbox
-        pc.addTrack(CameraVideoTrack(self.mailbox, self.detection_store))
+        pc.addTrack(CameraVideoTrack(self.buffer, self.detection_store))
 
         await pc.setRemoteDescription(offer)
         answer = await pc.createAnswer()
