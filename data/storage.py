@@ -31,18 +31,13 @@ class StorageThread(threading.Thread):
         self.enqueue('start_clip', {'clip_id': clip_id, 'file_path': file_path, 'trigger': trigger})
         return clip_id
 
-    def end_clip(self, clip_id: int, ended_at: Optional[str] = None) -> None:
+    def end_clip(self, clip_id: str, ended_at: Optional[str] = None) -> None:
         self.enqueue('end_clip', {'clip_id': clip_id, 'ended_at': ended_at})
 
-    def insert_frame(self, clip_id: int, frame_index: int) -> str:
-        frame_id = uuid.uuid4().hex  # Generate a unique identifier for the frame
-        self.enqueue('insert_frame', {'frame_id': frame_id, 'clip_id': clip_id, 'frame_index': frame_index})
-        return frame_id
-
-    def insert_detection(self, frame_id: str, class_name: str, confidence: float,
+    def insert_detection(self, clip_id: str, class_name: str, confidence: float,
                           bbox_x: int, bbox_y: int, bbox_width: int, bbox_height: int) -> None:
         self.enqueue('insert_detection', dict(
-            frame_id=frame_id, class_name=class_name, confidence=confidence,
+            clip_id=clip_id, class_name=class_name, confidence=confidence,
             bbox_x=bbox_x, bbox_y=bbox_y, bbox_width=bbox_width, bbox_height=bbox_height
         ))
 
@@ -137,17 +132,12 @@ class StorageThread(threading.Thread):
                 cursor.execute("UPDATE clips SET ended_at = datetime('now') WHERE id = ?", (p['clip_id'],))
             else:
                 cursor.execute("UPDATE clips SET ended_at = ? WHERE id = ?", (p['ended_at'], p['clip_id']))
-        elif cmd.type == 'insert_frame':
-            cursor.execute(
-                'INSERT INTO frames (id, clip_id, frame_index) VALUES (?, ?, ?)',
-                (p['frame_id'], p['clip_id'], p['frame_index'])
-            )
         elif cmd.type == 'insert_detection':
             cursor.execute(
                 '''INSERT INTO detections
-                   (frame_id, class_name, confidence, bbox_x, bbox_y, bbox_width, bbox_height)
+                   (clip_id, class_name, confidence, bbox_x, bbox_y, bbox_width, bbox_height)
                    VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                (p['frame_id'], p['class_name'], p['confidence'],
+                (p['clip_id'], p['class_name'], p['confidence'],
                  p['bbox_x'], p['bbox_y'], p['bbox_width'], p['bbox_height'])
             )
         else:
@@ -162,16 +152,9 @@ class StorageThread(threading.Thread):
                             trigger TEXT NOT NULL DEFAULT 'continuous'
                         )''')
 
-        cursor.execute('''CREATE TABLE IF NOT EXISTS frames (
-                            id TEXT PRIMARY KEY,
-                            clip_id TEXT NOT NULL REFERENCES clips (id) ON DELETE CASCADE,
-                            frame_index INTEGER NOT NULL,
-                            timestamp DATETIME NOT NULL DEFAULT (datetime('now'))
-                        )''')
-
         cursor.execute('''CREATE TABLE IF NOT EXISTS detections (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            frame_id TEXT NOT NULL REFERENCES frames (id) ON DELETE CASCADE,
+                            clip_id TEXT NOT NULL REFERENCES clips (id) ON DELETE CASCADE,
                             class_name TEXT NOT NULL,
                             confidence REAL NOT NULL,
                             bbox_x INTEGER NOT NULL,
