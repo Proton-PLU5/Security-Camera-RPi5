@@ -1,4 +1,5 @@
 import time
+import cv2
 from picamera2 import Picamera2, Preview
 from picamera2.encoders import H264Encoder
 from picamera2.outputs import FfmpegOutput
@@ -55,6 +56,9 @@ class CaptureThread(threading.Thread):
                 try:
                     lowres_frame = request.make_array("lores")
                     stream_frame = request.make_array("main")
+
+                    lowres_frame = cv2.cvtColor(lowres_frame, cv2.COLOR_YUV2BGR_I420)
+                    stream_frame = cv2.cvtColor(stream_frame, cv2.COLOR_YUV2BGR_I420)
                     timestamp = request.get_metadata().get("SensorTimestamp")
                 finally:
                     request.release()
