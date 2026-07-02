@@ -1,18 +1,16 @@
 [project]
-name = "camera-project"
+name = "security-camera-rpi5"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     "aiohttp>=3.14.1",
     "aiortc>=1.14.0",
     "picamera2>=0.3.36",
-    "ultralytics-opencv-headless>=8.4.84",
-    "torch>=2.10,<2.13",
-    "torchvision>=0.2",
+    "torch>=2.12.1",
+    "ultralytics>=8.4.84",
 ]
-
 [tool.uv]
 override-dependencies = [
     "opencv-python<5.0.0",
