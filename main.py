@@ -2,6 +2,7 @@ from data.storage import StorageThread
 from capture.capture import CaptureThread
 from capture.mailbox import MailBox
 from capture.detection.detect import DetectionThread, DetectionStore
+from stream.webrtc_stream import StreamThread
 from ultralytics import YOLO
 
 if __name__ == "__main__":
@@ -10,14 +11,19 @@ if __name__ == "__main__":
     storage_thread = StorageThread()
     storage_thread.start()
 
-    mailbox = MailBox()
+    detection_mailbox = MailBox()
     detection_store = DetectionStore()
 
-    capture_thread = CaptureThread(mailbox=mailbox, clip_dir="./clips", clip_length=10, storage_thread=storage_thread)
+    stream_mailbox = MailBox()
+
+    capture_thread = CaptureThread(detection_mailbox=detection_mailbox, stream_mailbox=stream_mailbox, clip_dir="./clips", clip_length=10, storage_thread=storage_thread)
     capture_thread.start()
 
-    detection_thread = DetectionThread(mailbox=mailbox, detection_store=detection_store, model=model, storage_thread=storage_thread)
+    detection_thread = DetectionThread(mailbox=detection_mailbox, detection_store=detection_store, model=model, storage_thread=storage_thread)
     detection_thread.start()
+
+    stream_thread = StreamThread(mailbox=stream_mailbox, detection_store=detection_store)
+    stream_thread.start()
     
     while True:
         user_input = input("> ")
@@ -28,5 +34,7 @@ if __name__ == "__main__":
     capture_thread.join()
     detection_thread.stop()
     detection_thread.join()
+    stream_thread.stop()
+    stream_thread.join()
     storage_thread.stop()
     storage_thread.join()

@@ -7,16 +7,15 @@ class MailBox:
     def __init__(self):
         self.lock = threading.Lock()
         self.item = None
-        self.semaphore = threading.BoundedSemaphore(0)
+        self.event = threading.Event()
 
     def put(self, item):
         with self.lock:
             self.item = item
-        
-        self.semaphore.release() # signal that an item is available
+            self.event.set()
 
     def get(self, timeout=None):
-        acquired = self.semaphore.acquire(timeout=timeout)
+        acquired = self.event.wait(timeout)
 
         if not acquired:
             return None # timeout occurred, no item available
@@ -24,7 +23,8 @@ class MailBox:
         with self.lock:
             item = self.item
             self.item = None
+            self.event.clear()
             return item
         
     def empty(self) -> bool:
-        return self.item is None
+        return not self.event.is_set()

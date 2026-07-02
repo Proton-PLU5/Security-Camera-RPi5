@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Camera WebRTC Test Client</title>
+</head>
+<body>
+  <h3>Live stream</h3>
+  <video id="video" autoplay playsinline muted style="width: 100%; max-width: 960px; background: #000;"></video>
+  <p id="status">connecting...</p>
+
+  <script>
+    const statusEl = document.getElementById("status");
+
+    async function start() {
+      // receive-only peer connection: we're not sending any media,
+      // just asking the server to send us its video track
+      const pc = new RTCPeerConnection();
+      pc.addTransceiver("video", { direction: "recvonly" });
+
+      pc.ontrack = (event) => {
+        document.getElementById("video").srcObject = event.streams[0];
+      };
+
+      pc.onconnectionstatechange = () => {
+        statusEl.textContent = "connection state: " + pc.connectionState;
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      // point this at wherever WebRTCStreamThread is actually running
+      const response = await fetch("http://" + location.hostname + ":8080/offer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sdp: offer.sdp, type: offer.type }),
+      });
+      const answer = await response.json();
+      await pc.setRemoteDescription(answer);
+    }
+
+    start().catch((err) => {
+      statusEl.textContent = "error: " + err;
+      console.error(err);
+    });
+  </script>
+</body>
+</html>
