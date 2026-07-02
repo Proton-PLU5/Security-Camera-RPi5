@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 class CaptureThread(threading.Thread):
     def __init__(self,
-                 mailbox: MailBox,
+                 detection_mailbox: MailBox,
+                 stream_mailbox: MailBox,
                  storage_thread: StorageThread,
                  video_size: tuple[int, int] = (1920, 1080),
                  lowres_size: tuple[int, int] = (640, 640),
@@ -22,7 +23,8 @@ class CaptureThread(threading.Thread):
         
         super().__init__(daemon=True, name="CaptureThread")
 
-        self.mailbox = mailbox
+        self.detection_mailbox = detection_mailbox
+        self.stream_mailbox = stream_mailbox
         self.clip_dir = clip_dir
         self.clip_length = clip_length
         self.storage_thread = storage_thread
@@ -49,17 +51,16 @@ class CaptureThread(threading.Thread):
                 if self.clip_length and (time.time() - self.current_clip_start > self.clip_length):
                     self.latest_clip_id = self.start_new_clip()
                 
-                if self.mailbox.empty():
-                    request = self.camera.capture_request()
-                    try:
-                        lowres_frame = request.make_array("lores")
-                        timestamp = request.get_metadata().get("SensorTimestamp")
-                    finally:
-                        request.release()
+                request = self.camera.capture_request()
+                try:
+                    lowres_frame = request.make_array("lores")
+                    stream_frame = request.make_array("main")
+                    timestamp = request.get_metadata().get("SensorTimestamp")
+                finally:
+                    request.release()
 
-                    self.mailbox.put((lowres_frame, timestamp, self.latest_clip_id))
-                else:
-                    time.sleep(0.01)
+                self.detection_mailbox.put((lowres_frame, timestamp, self.latest_clip_id))
+                self.stream_mailbox.put(stream_frame)
         except Exception as e:
             logger.error(f"Error in CaptureThread: {e}")
         finally:
