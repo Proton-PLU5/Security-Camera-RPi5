@@ -50,19 +50,29 @@ class DetectionThread(threading.Thread):
             )
 
             for result in results:
-                for box in result.boxes.xyxy:
-                    class_id = int(box.cls[0])
+                if result.boxes is None:
+                    continue
+
+                for box in result.boxes:
+                    class_id = int(box.cls.item())
                     class_name = self.model.names[class_id]
-                    confidence = float(box.conf[0])
+                    confidence = float(box.conf.item())
                     bbox_x, bbox_y, bbox_width, bbox_height = map(int, box.xywh[0])
 
-                    # Log the detection
-                    logger.info(f"Detection: {class_name} (confidence: {confidence:.2f}) at "
-                                f"({bbox_x}, {bbox_y}, {bbox_width}, {bbox_height}) in clip {clip_id}")
+                    logger.info(
+                        f"Detection: {class_name} (confidence: {confidence:.2f}) at "
+                        f"({bbox_x}, {bbox_y}, {bbox_width}, {bbox_height}) in clip {clip_id}"
+                    )
 
-                    # Store the detection result in the storage thread
-                    self.storage_thread.insert_detection(clip_id=clip_id, class_name=class_name, confidence=confidence,
-                                bbox_x=bbox_x, bbox_y=bbox_y, bbox_width=bbox_width, bbox_height=bbox_height)
-
+                    self.storage_thread.insert_detection(
+                        clip_id=clip_id,
+                        class_name=class_name,
+                        confidence=confidence,
+                        bbox_x=bbox_x,
+                        bbox_y=bbox_y,
+                        bbox_width=bbox_width,
+                        bbox_height=bbox_height,
+                    )
+                    
     def stop(self):
         self.stop_event.set()
