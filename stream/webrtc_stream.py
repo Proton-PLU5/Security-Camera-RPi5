@@ -62,7 +62,7 @@ class CameraVideoTrack(VideoStreamTrack):
 
         frame = await asyncio.to_thread(self.mailbox.get, 0)
         if frame is None:
-            frame = np.zeros((self.lowres_size[1], self.lowres_size[0], 3), dtype=np.uint8)  # black frame
+            frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
         else:
             frame = frame.copy()  # Copy the frame to avoid modifying the original
 
