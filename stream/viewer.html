@@ -1,48 +1,122 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Camera WebRTC Test Client</title>
-</head>
-<body>
-  <h3>Live stream</h3>
-  <video id="video" autoplay playsinline muted style="width: 100%; max-width: 960px; background: #000;"></video>
-  <p id="status">connecting...</p>
+  <title>Camera WebRTC Viewer</title>
 
-  <script>
-    const statusEl = document.getElementById("status");
-
-    async function start() {
-      // receive-only peer connection: we're not sending any media,
-      // just asking the server to send us its video track
-      const pc = new RTCPeerConnection();
-      pc.addTransceiver("video", { direction: "recvonly" });
-
-      pc.ontrack = (event) => {
-        document.getElementById("video").srcObject = event.streams[0];
-      };
-
-      pc.onconnectionstatechange = () => {
-        statusEl.textContent = "connection state: " + pc.connectionState;
-      };
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      // point this at wherever WebRTCStreamThread is actually running
-      const response = await fetch("http://" + location.hostname + ":8080/offer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sdp: offer.sdp, type: offer.type }),
-      });
-      const answer = await response.json();
-      await pc.setRemoteDescription(answer);
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: #fff;
+      font-family: sans-serif;
+      text-align: center;
     }
 
-    start().catch((err) => {
-      statusEl.textContent = "error: " + err;
-      console.error(err);
-    });
-  </script>
+    h2 {
+      margin: 12px;
+    }
+
+    video {
+      width: 95vw;
+      max-width: 1200px;
+      background: black;
+      border-radius: 8px;
+    }
+
+    #status {
+      margin: 10px;
+      color: #7fd4ff;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>Live Stream</h2>
+  <video id="video" autoplay playsinline muted></video>
+  <div id="status">Connecting...</div>
+
+<script>
+const video = document.getElementById("video");
+const statusEl = document.getElementById("status");
+
+function setStatus(msg) {
+  console.log(msg);
+  statusEl.textContent = msg;
+}
+
+async function waitForIceGathering(pc) {
+  if (pc.iceGatheringState === "complete") return;
+
+  await new Promise(resolve => {
+    const check = () => {
+      if (pc.iceGatheringState === "complete") {
+        pc.removeEventListener("icegatheringstatechange", check);
+        resolve();
+      }
+    };
+    pc.addEventListener("icegatheringstatechange", check);
+  });
+}
+
+async function start() {
+  const pc = new RTCPeerConnection({
+    iceServers: [] // LAN-only setup (good for Raspberry Pi)
+  });
+
+  pc.addTransceiver("video", { direction: "recvonly" });
+
+  pc.ontrack = (event) => {
+    setStatus("Video received");
+    video.srcObject = event.streams[0];
+  };
+
+  pc.onconnectionstatechange = () => {
+    setStatus("Connection: " + pc.connectionState);
+
+    if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+      setTimeout(start, 2000);
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    console.log("ICE:", pc.iceConnectionState);
+  };
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) console.log("ICE candidate:", e.candidate);
+  };
+
+  setStatus("Creating offer...");
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  await waitForIceGathering(pc);
+
+  setStatus("Sending offer...");
+
+  // IMPORTANT FIX: relative URL avoids http://:8080 bug completely
+  const response = await fetch("/offer", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(pc.localDescription)
+  });
+
+  const answer = await response.json();
+  await pc.setRemoteDescription(answer);
+
+  setStatus("Connected");
+}
+
+start().catch(err => {
+  console.error(err);
+  setStatus("Error: " + err);
+});
+</script>
+
 </body>
 </html>
