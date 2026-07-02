@@ -4,4 +4,12 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "picamera2>=0.3.36",
+    "ultralytics-opencv-headless>=8.4.84",
+]
+[tool.uv]
+override-dependencies = [
+    "opencv-python<5.0.0",
+    "opencv-python-headless<5.0.0"
+]
