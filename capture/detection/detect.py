@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import threading
 from time import time
 from typing import Any, Optional, Tuple
+from data.metrics import metrics
 from data.storage import StorageThread
 import logging
 
@@ -44,7 +45,10 @@ class DetectionThread(threading.Thread):
                 continue
             
             lowres_frame, timestamp, clip_id = item
-            results = self.model(lowres_frame)
+            results = self.model(lowres_frame, verbose=False)
+            for stage,ms in results[0].speed.items():
+                metrics.record(f"detection_{stage}", ms / 1000.0)  # convert to seconds
+                
             self.detection_store.update(
                 Detection(timestamp=timestamp, boxes=results, frame_size=lowres_frame.shape[:2])
             )

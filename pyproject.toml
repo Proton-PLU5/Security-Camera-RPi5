@@ -10,6 +10,7 @@ dependencies = [
     "onnx>=1.22.0",
     "onnxruntime>=1.27.0",
     "picamera2>=0.3.36",
+    "prompt-toolkit>=3.0.52",
     "torch>=2.12.1",
     "ultralytics>=8.4.84",
 ]
