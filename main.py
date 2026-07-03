@@ -1,4 +1,5 @@
 import logging
+import sys
 
 import numpy as np
 import ncnn
@@ -20,7 +21,7 @@ from ultralytics import YOLO
 from data.metrics import metrics
 _orig_load_param = ncnn.Net.load_param # type: ignore
 
-console = Console()
+console = Console(file=sys.stdout, force_terminal=True)
 
 # NCNN THREAD LIMITING
 def _load_param_with_thread_limit(self, path):
@@ -66,7 +67,7 @@ def main():
         logging.basicConfig(
             level=logging.INFO,
             format="[%(threadName)s] %(name)s: %(message)s",
-            handlers=[RichHandler(rich_tracebacks=True)]
+            handlers=[RichHandler(console=console, rich_tracebacks=True)]
         )
         
         model = YOLO("./capture/detection/yolo26s_ncnn_model")  # Load the YOLO model
@@ -185,7 +186,7 @@ def main():
                     "[dim]Type 'help' for available commands.[/dim]"
                 )
         
-        print("Shutting down threads...")
+        console.print("Shutting down threads...")
         capture_thread.stop()
         capture_thread.join()
         detection_thread.stop()
