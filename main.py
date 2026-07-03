@@ -82,7 +82,7 @@ def main():
     root.handlers = [file_handler, tui_handler]
  
     try:
-        app.run()  # blocks until 'exit' is typed or Ctrl-C/Ctrl-Q
+        app.run()
     finally:
         capture_thread.stop()
         capture_thread.join()
