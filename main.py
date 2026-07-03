@@ -8,8 +8,7 @@ from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
 from rich.console import Console
 from rich.panel import Panel
-from rich.status import status
-from rich.table import Table, table
+from rich.table import Table
 from rich.logging import RichHandler
 from data.storage import StorageThread
 from capture.capture import CaptureThread
