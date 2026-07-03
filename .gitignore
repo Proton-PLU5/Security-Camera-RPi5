@@ -24,6 +24,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
+.continue
 
 # Virtual environments
 venv/
@@ -55,3 +57,5 @@ Thumbs.db
 *.mov
 recordings/
 footage/
+.continue/mcpServers/new-mcp-server.yaml
+.gitignore
