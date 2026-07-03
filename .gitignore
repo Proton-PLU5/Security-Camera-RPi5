@@ -29,6 +29,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.continue
 
 # ============================================================================
 # Testing and Coverage
@@ -76,3 +77,5 @@ venv.bak/
 # System Files
 .DS_Store
 Thumbs.db
+.continue/mcpServers/new-mcp-server.yaml
+.gitignore
