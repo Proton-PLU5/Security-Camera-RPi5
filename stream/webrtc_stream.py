@@ -3,7 +3,7 @@ import logging
 import threading
 from typing import Optional, Tuple
 from aiohttp import web
-from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack, VideoStreamTrack
+from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription, MediaStreamTrack, VideoStreamTrack
 from av import VideoFrame
 import cv2
 import numpy as np
@@ -122,7 +122,9 @@ class StreamThread(threading.Thread):
         params = await request.json()
         offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
 
-        pc = RTCPeerConnection()
+        ice_config = RTCConfiguration(iceServers=[RTCIceServer(urls=["stun:stun.l.google.com:19302"])])
+
+        pc = RTCPeerConnection(configuration=ice_config)
         self.pcs.add(pc)
 
         @pc.on("connectionstatechange")
