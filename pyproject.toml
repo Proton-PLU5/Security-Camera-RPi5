@@ -12,7 +12,9 @@ dependencies = [
     "onnxruntime>=1.27.0",
     "picamera2>=0.3.36",
     "prompt-toolkit>=3.0.52",
+    "pyfiglet>=1.0.4",
     "rich>=15.0.0",
+    "textual>=8.2.8",
     "torch>=2.12.1",
     "ultralytics>=8.4.84",
 ]
