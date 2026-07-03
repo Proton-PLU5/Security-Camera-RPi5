@@ -1,5 +1,7 @@
 import logging
 
+import numpy as np
+
 from data.storage import StorageThread
 from capture.capture import CaptureThread
 from capture.mailbox import MailBox
@@ -16,7 +18,10 @@ if __name__ == "__main__":
     )
     
     model = YOLO("./capture/detection/yolo26s_ncnn_model")  # Load the YOLO model
-
+    # forces AutoBackend/NCNNBackend to actually initialize
+    model.predict(np.zeros((640, 640, 3), dtype=np.uint8), verbose=False)
+    model.predictor.model.net.opt.num_threads = 2 # type: ignore # Limit NCNN to 2 threads so other threads do not starve.
+    
     storage_thread = StorageThread()
     storage_thread.start()
 
