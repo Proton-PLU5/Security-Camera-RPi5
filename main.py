@@ -7,7 +7,7 @@ from stream.webrtc_stream import StreamThread
 from ultralytics import YOLO
 
 if __name__ == "__main__":
-    model = YOLO("./capture/detection/yolo26s.pt")  # Load the YOLO model
+    model = YOLO("./capture/detection/yolo26s_ncnn_model")  # Load the YOLO model
 
     storage_thread = StorageThread()
     storage_thread.start()
