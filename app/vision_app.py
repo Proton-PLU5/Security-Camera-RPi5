@@ -17,7 +17,7 @@ class TextualLogHandler(logging.Handler):
     call_from_thread() is Textual's sanctioned way to safely touch
     widgets from a non-UI thread (CaptureThread, DetectionThread, etc.
     all call logger.info() from their own threads).
-
+ 
     Note: call_from_thread() only works once the app's event loop is
     actually running (i.e. after app.run() has started). If a thread
     logs something in the brief window between thread.start() and the
@@ -26,18 +26,26 @@ class TextualLogHandler(logging.Handler):
     milliseconds and rarely matters, but it's why emit() swallows
     exceptions instead of raising.
     """
-
+ 
     def __init__(self, app: "VisionApp"):
         super().__init__()
         self.app = app
-
+ 
     def emit(self, record: logging.LogRecord):
         try:
             msg = self.format(record)
+        except Exception:
+            return
+ 
+        try:
             self.app.call_from_thread(self.app.log_message, msg)
+        except RuntimeError:
+            try:
+                self.app.log_message(msg)
+            except Exception:
+                pass
         except Exception:
             pass
-
 
 class VisionApp(App):
     """Vision System TUI (Textual-based)"""
