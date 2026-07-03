@@ -55,17 +55,26 @@ class CaptureThread(threading.Thread):
                 
                 request = self.camera.capture_request()
                 try:
+                    t0 = time.time()
                     lowres_frame = request.make_array("lores")
                     stream_frame = request.make_array("main")
+                    t1 = time.time()
 
                     lowres_frame = cv2.cvtColor(lowres_frame, cv2.COLOR_YUV2RGB_I420)
                     stream_frame = cv2.cvtColor(stream_frame, cv2.COLOR_RGB2BGR)
+                    t2 = time.time()
+
                     timestamp = request.get_metadata().get("SensorTimestamp")
                 finally:
                     request.release()
 
+                t3 = time.time()
                 self.detection_mailbox.put((lowres_frame, timestamp, self.latest_clip_id))
+                t4 = time.time()
                 self.stream_buffer.put(stream_frame)
+                t5 = time.time()
+
+                logger.info(f"capture={t1-t0:.4f} convert={t2-t1:.4f} release={t3-t2:.4f} mailbox={t4-t3:.4f} streambuf={t5-t4:.4f}")
         except Exception as e:
             logger.error(f"Error in CaptureThread: {e}")
         finally:
