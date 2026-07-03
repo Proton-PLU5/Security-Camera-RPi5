@@ -9,6 +9,6 @@ if __name__ == "__main__":
         half=True,           # Use FP16 for smaller model size and faster inference
         device="cpu",        # CPU is sufficient for conversion
         imgsz=640,           # Input image size (default)
-        simplify=True        # Simplify the model architecture
+        simplify=True,        # Simplify the model architecture
     )
     print("NCNN model exported successfully!")
