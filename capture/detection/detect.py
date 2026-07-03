@@ -59,11 +59,6 @@ class DetectionThread(threading.Thread):
                     confidence = float(box.conf.item())
                     bbox_x, bbox_y, bbox_width, bbox_height = map(int, box.xywh[0])
 
-                    logger.info(
-                        f"Detection: {class_name} (confidence: {confidence:.2f}) at "
-                        f"({bbox_x}, {bbox_y}, {bbox_width}, {bbox_height}) in clip {clip_id}"
-                    )
-
                     self.storage_thread.insert_detection(
                         clip_id=clip_id,
                         class_name=class_name,

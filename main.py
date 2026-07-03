@@ -1,3 +1,5 @@
+import logging
+
 from data.storage import StorageThread
 from capture.capture import CaptureThread
 from capture.mailbox import MailBox
@@ -7,6 +9,12 @@ from stream.webrtc_stream import StreamThread
 from ultralytics import YOLO
 
 if __name__ == "__main__":
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(threadName)s] %(levelname)s %(name)s: %(message)s",
+    )
+    
     model = YOLO("./capture/detection/yolo26s_ncnn_model")  # Load the YOLO model
 
     storage_thread = StorageThread()
