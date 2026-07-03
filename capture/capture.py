@@ -58,7 +58,7 @@ class CaptureThread(threading.Thread):
                     lowres_frame = request.make_array("lores")
                     stream_frame = request.make_array("main")
 
-                    lowres_frame = cv2.cvtColor(lowres_frame, cv2.COLOR_YUV2BGR_I420)
+                    lowres_frame = cv2.cvtColor(lowres_frame, cv2.COLOR_YUV2RGB_I420)
                     stream_frame = cv2.cvtColor(stream_frame, cv2.COLOR_RGB2BGR)
                     timestamp = request.get_metadata().get("SensorTimestamp")
                 finally:
