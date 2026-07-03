@@ -26,12 +26,23 @@ wheels/
 *.egg
 MANIFEST
 .continue
-
-# Virtual environments
-venv/
-env/
-ENV/
-.venv
+clips
+storage.db
+# ============================================================================
+# Testing and Coverage
+# ============================================================================
+.htmlcov/
+.tox/
+.nosenv/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+cover/
 
 
 # IDE
