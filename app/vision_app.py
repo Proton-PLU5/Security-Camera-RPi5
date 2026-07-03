@@ -90,6 +90,7 @@ class VisionApp(App):
         )
         self.query_one("#log", RichLog).write(panel)
         self.log_message("Vision system started \u2714")
+        self._handle_help(self.query_one("#log", RichLog))
 
     # -----------------------------
     # HEADER PANEL
@@ -174,6 +175,7 @@ class VisionApp(App):
         table.add_row("metrics", "Display runtime metrics")
         table.add_row("help", "Show this help menu")
         table.add_row("exit", "Shutdown application")
+        table.add_row("reset_data", "Delete storage.db, clips, and reset metrics")
         log.write(table)
 
     # -----------------------------
