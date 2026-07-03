@@ -1,7 +1,7 @@
 import logging
 
 import numpy as np
-
+import ncnn
 from data.storage import StorageThread
 from capture.capture import CaptureThread
 from capture.mailbox import MailBox
@@ -9,6 +9,14 @@ from capture.detection.detect import DetectionThread, DetectionStore
 from stream.frame_buffer import FrameBuffer
 from stream.webrtc_stream import StreamThread
 from ultralytics import YOLO
+
+_orig_load_param = ncnn.Net.load_param
+
+def _load_param_with_thread_limit(self, path):
+    self.opt.num_threads = 2  # set before weights get packed, not after
+    return _orig_load_param(self, path)
+
+ncnn.Net.load_param = _load_param_with_thread_limit
 
 if __name__ == "__main__":
 
@@ -18,10 +26,7 @@ if __name__ == "__main__":
     )
     
     model = YOLO("./capture/detection/yolo26s_ncnn_model")  # Load the YOLO model
-    # forces AutoBackend/NCNNBackend to actually initialize
-    model.predict(np.zeros((640, 640, 3), dtype=np.uint8), verbose=False)
-    model.predictor.model.net.opt.num_threads = 2 # type: ignore # Limit NCNN to 2 threads so other threads do not starve.
-    
+
     storage_thread = StorageThread()
     storage_thread.start()
 
