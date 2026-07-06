@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 import logging
 import threading
 from typing import Optional, Tuple
@@ -7,7 +6,7 @@ from aiohttp import web
 from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription, MediaStreamTrack, VideoStreamTrack
 from av import VideoFrame
 import cv2
-from polars import datetime
+from datetime import datetime, timezone
 import numpy as np
 from capture.detection.detect import Detection, DetectionStore
 import sqlite3
@@ -83,7 +82,7 @@ class StreamThread(threading.Thread):
         super().__init__(daemon=True, name="StreamThread")
         self.buffer = buffer
         self.detection_store = detection_store
-        self.connection = sqlite3.connect(storage_db_path, check_same_thread=False)
+        self.storage_db_path = storage_db_path
         self.stop_event = threading.Event()
         self.host = host
         self.port = port
@@ -152,8 +151,14 @@ class StreamThread(threading.Thread):
     # --- Clip handling endpoints ---
 
     def query_clips_list(self):
+        connection = sqlite3.connect(self.storage_db_path)
         try:
-            cursor = self.connection.cursor()
+            cursor = connection.cursor()
+
+            if cursor is None:
+                logger.error("Failed to create database cursor.")
+                return []
+            
             cursor.execute(
                 "SELECT id, started_at, ended_at, file_path, trigger "
                 "FROM clips ORDER BY started_at DESC LIMIT 200"
@@ -166,8 +171,14 @@ class StreamThread(threading.Thread):
             cursor.close()
 
     def query_clip_at(self, timestamp: str):
+        connection = sqlite3.connect(self.storage_db_path)
         try:
-            cursor = self.connection.cursor()
+            cursor = connection.cursor()
+
+            if cursor is None:
+                logger.error("Failed to create database cursor.")
+                return None
+                
             cursor.execute(
                 "SELECT id, started_at, ended_at, file_path, trigger FROM clips "
                 "WHERE started_at <= ? AND (ended_at IS NULL OR ended_at >= ?) "
@@ -182,8 +193,14 @@ class StreamThread(threading.Thread):
             cursor.close()
 
     def query_clip_by_id(self, clip_id: str):
+        connection = sqlite3.connect(self.storage_db_path)
         try:
-            cursor = self.connection.cursor()
+            cursor = connection.cursor()
+
+            if cursor is None:
+                logger.error("Failed to create database cursor.")
+                return None
+            
             cursor.execute(
                 "SELECT id, started_at, ended_at, file_path, trigger FROM clips WHERE id = ?",
                 (clip_id,),
@@ -207,7 +224,7 @@ class StreamThread(threading.Thread):
         try:
             # Expect timestamp in ISO 8601 format
             dt = datetime.fromisoformat(timestamp)
-            timestamp_utc = dt.astimezone(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            timestamp_utc = dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             return web.json_response({"error": "Invalid timestamp format, expected ISO 8601"}, status=400)
         
@@ -241,8 +258,6 @@ class StreamThread(threading.Thread):
         self.pcs.clear()
         if self.runner is not None:
             await self.runner.cleanup()
-
-        self.connection.close()
 
     async def index(self, request: web.Request) -> web.FileResponse:
         return web.FileResponse("stream/viewer.html")
