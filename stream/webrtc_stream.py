@@ -112,8 +112,8 @@ class StreamThread(threading.Thread):
 
         app.router.add_get("/clips", self.handle_clips_list)
         app.router.add_get("/clips/find", self.handle_clip_find)
-        app.router.add_get("/clips/{clip_id}", self.handle_clip_file)
         app.router.add_get("/clips/{clip_id}/detections", self.handle_clip_detections)
+        app.router.add_get("/clips/{clip_id}", self.handle_clip_file)
 
         self.runner = web.AppRunner(app)
         await self.runner.setup()
