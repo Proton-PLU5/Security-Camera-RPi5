@@ -299,7 +299,7 @@ function drawOverlay() {
 
     const cached = detectionsCache[clip.id];
     if (cached) {
-        const [lowresH, lowresW] = cached.lowres_size;
+        const [lowresW, lowresH] = cached.lowres_size;
         const scaleX = canvas.width / lowresW;
         const scaleY = canvas.height / lowresH;
 
