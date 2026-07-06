@@ -289,6 +289,8 @@ function drawOverlay() {
     const { active } = getClipVideos();
     const clip = clipsAsc[currentIndex];
 
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
     if (!active || !clip || !active.videoWidth) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         requestAnimationFrame(drawOverlay);

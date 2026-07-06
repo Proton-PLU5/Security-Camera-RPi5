@@ -62,7 +62,6 @@ class CaptureThread(threading.Thread):
 
                     with metrics.time("convert"):
                         lowres_frame = cv2.cvtColor(lowres_frame, cv2.COLOR_YUV2RGB_I420)
-                        stream_frame = cv2.cvtColor(stream_frame, cv2.COLOR_RGB2BGR)
 
                     timestamp = request.get_metadata().get("SensorTimestamp")
                 finally:
