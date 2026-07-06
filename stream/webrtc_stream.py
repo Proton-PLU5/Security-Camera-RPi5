@@ -15,7 +15,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-def draw_detections(frame: np.ndarray, detection: Optional[Detection], lores_size: Tuple[int, int]) -> np.ndarray:
+def draw_detections(frame: np.ndarray, detection: Optional[Detection]) -> np.ndarray:
     """
     Draw the latest YOLO boxes onto a full-res frame.
     """
@@ -70,7 +70,7 @@ class CameraVideoTrack(VideoStreamTrack):
 
         detection = self.detection_store.latest()
 
-        frame = draw_detections(frame, detection, self.lowres_size)
+        frame = draw_detections(frame, detection)
 
         video_frame = VideoFrame.from_ndarray(frame, format="bgr24")
         video_frame.pts = pts
@@ -78,7 +78,7 @@ class CameraVideoTrack(VideoStreamTrack):
         return video_frame
     
 class StreamThread(threading.Thread):
-    def __init__(self, buffer: FrameBuffer, detection_store: DetectionStore, storage_db_path: str, host: str = '0.0.0.0', port: int = 8080):
+    def __init__(self, buffer: FrameBuffer, detection_store: DetectionStore, storage_db_path: str, host: str = '0.0.0.0', port: int = 8080, lowres_size: Tuple[int, int] = (640, 640)):
         super().__init__(daemon=True, name="StreamThread")
         self.buffer = buffer
         self.detection_store = detection_store
@@ -86,6 +86,7 @@ class StreamThread(threading.Thread):
         self.stop_event = threading.Event()
         self.host = host
         self.port = port
+        self.lowres_size = lowres_size
 
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.runner: Optional[web.AppRunner] = None
@@ -164,10 +165,9 @@ class StreamThread(threading.Thread):
                 for r in cursor.fetchall()
             ]
         finally:
-            cursor.close()
             connection.close()
 
-    def query_clip_at(self, timestamp: str):
+    def query_clip_at(self, timestamp: float):
         connection = sqlite3.connect(self.storage_db_path, timeout=5.0)
         try:
             cursor = connection.cursor()
@@ -183,7 +183,6 @@ class StreamThread(threading.Thread):
                 return {"id": row[0], "started_at": row[1], "ended_at": row[2], "file_path": row[3], "trigger": row[4]}
             return None
         finally:
-            cursor.close()
             connection.close()
 
     def query_clip_by_id(self, clip_id: str):
@@ -200,7 +199,44 @@ class StreamThread(threading.Thread):
                 return {"id": row[0], "started_at": row[1], "ended_at": row[2], "file_path": row[3], "trigger": row[4]}
             return None
         finally:
-            cursor.close()
+            connection.close()
+
+    def query_detections_for_clip(self, clip_id: str):
+        connection = sqlite3.connect(self.storage_db_path, timeout=5.0)
+        try:
+            cursor = connection.cursor()
+            
+            cursor.execute(
+                "SELECT started_at FROM clips WHERE id = ?",
+                (clip_id,),
+            )
+
+            clip_row = cursor.fetchone()
+
+            if clip_row is None:
+                return None  # Clip not found
+            
+            cursor.execute(
+                "SELECT timestamp, class_name, confidence, bbox_x, bbox_y, bbox_width, bbox_height"
+                " FROM detections WHERE clip_id = ? ORDER BY timestamp ASC",
+                (clip_id,),
+            )
+
+            detections = [
+                {
+                    "offset": row[0] - clip_row[0],
+                    "class_name": row[1],
+                    "confidence": row[2],
+                    "bbox_x": row[3],
+                    "bbox_y": row[4],
+                    "bbox_width": row[5],
+                    "bbox_height": row[6],
+                }
+                for row in cursor.fetchall()
+            ]
+
+            return detections
+        finally:
             connection.close()
 
     async def handle_clips_list(self, request: web.Request) -> web.Response:
@@ -212,18 +248,26 @@ class StreamThread(threading.Thread):
         if not timestamp:
             return web.json_response({"error": "Missing timestamp parameter"}, status=400)
         
-        try:
-            # Expect timestamp in ISO 8601 format
-            dt = datetime.fromisoformat(timestamp)
-            timestamp_utc = dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            return web.json_response({"error": "Invalid timestamp format, expected ISO 8601"}, status=400)
+        timestamp_epoch = float(timestamp)
         
-        clip = await asyncio.to_thread(self.query_clip_at, timestamp_utc)
+        clip = await asyncio.to_thread(self.query_clip_at, timestamp_epoch)
         if clip is None:
             return web.json_response({"error": "No clip found at the given timestamp"}, status=404)
         
         return web.json_response(clip)
+    
+    async def handle_clip_detections(self, request: web.Request) -> web.Response:
+        clip_id = str(request.match_info.get("clip_id"))
+
+        if not clip_id:
+            return web.json_response({"error": "Missing clip_id parameter"}, status=400)
+
+        detections = await asyncio.to_thread(self.query_detections_for_clip, clip_id)
+
+        if detections is None:
+            return web.json_response({"error": "Clip not found"}, status=404)
+
+        return web.json_response(detections)
     
     async def handle_clip_file(self, request: web.Request) -> web.StreamResponse:
         clip_id = str(request.match_info.get("clip_id"))

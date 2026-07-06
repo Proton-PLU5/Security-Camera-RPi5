@@ -26,18 +26,18 @@ class StorageThread(threading.Thread):
 
     # ---------- Public API ----------
 
-    def start_clip(self, file_path: str, trigger: str = 'continuous') -> str:
+    def start_clip(self, file_path: str, start_time: float, trigger: str = 'continuous') -> str:
         clip_id = uuid.uuid4().hex  # Generate a unique identifier for the clip
-        self.enqueue('start_clip', {'clip_id': clip_id, 'file_path': file_path, 'trigger': trigger})
+        self.enqueue('start_clip', {'clip_id': clip_id, 'file_path': file_path, 'start_time': start_time, 'trigger': trigger})
         return clip_id
 
-    def end_clip(self, clip_id: str, ended_at: Optional[str] = None) -> None:
+    def end_clip(self, clip_id: str, ended_at: float) -> None:
         self.enqueue('end_clip', {'clip_id': clip_id, 'ended_at': ended_at})
 
-    def insert_detection(self, clip_id: str, class_name: str, confidence: float,
+    def insert_detection(self, clip_id: str, timestamp: float, class_name: str, confidence: float,
                           bbox_x: int, bbox_y: int, bbox_width: int, bbox_height: int) -> None:
         self.enqueue('insert_detection', dict(
-            clip_id=clip_id, class_name=class_name, confidence=confidence,
+            clip_id=clip_id, timestamp=timestamp, class_name=class_name, confidence=confidence,
             bbox_x=bbox_x, bbox_y=bbox_y, bbox_width=bbox_width, bbox_height=bbox_height
         ))
 
@@ -124,14 +124,11 @@ class StorageThread(threading.Thread):
         p = cmd.payload
         if cmd.type == 'start_clip':
             cursor.execute(
-                'INSERT INTO clips (id, file_path, trigger) VALUES (?, ?, ?)',
-                (p['clip_id'], p['file_path'], p['trigger'])
+                'INSERT INTO clips (id, started_at, file_path, trigger) VALUES (?, ?, ?, ?)',
+                (p['clip_id'], p['start_time'], p['file_path'], p['trigger'])
             )
         elif cmd.type == 'end_clip':
-            if p['ended_at'] is None:
-                cursor.execute("UPDATE clips SET ended_at = datetime('now') WHERE id = ?", (p['clip_id'],))
-            else:
-                cursor.execute("UPDATE clips SET ended_at = ? WHERE id = ?", (p['ended_at'], p['clip_id']))
+            cursor.execute("UPDATE clips SET ended_at = ? WHERE id = ?", (p['ended_at'], p['clip_id']))
         elif cmd.type == 'insert_detection':
             cursor.execute(
                 '''INSERT INTO detections
@@ -146,8 +143,8 @@ class StorageThread(threading.Thread):
     def create_tables(self, cursor):
         cursor.execute('''CREATE TABLE IF NOT EXISTS clips (
                             id TEXT PRIMARY KEY,
-                            started_at DATETIME NOT NULL DEFAULT (datetime('now')),
-                            ended_at DATETIME DEFAULT (datetime('now')),
+                            started_at REAL NOT NULL,
+                            ended_at REAL,
                             file_path TEXT NOT NULL,
                             trigger TEXT NOT NULL DEFAULT 'continuous'
                         )''')
@@ -155,6 +152,7 @@ class StorageThread(threading.Thread):
         cursor.execute('''CREATE TABLE IF NOT EXISTS detections (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             clip_id TEXT NOT NULL REFERENCES clips (id) ON DELETE CASCADE,
+                            timestamp REAL NOT NULL,
                             class_name TEXT NOT NULL,
                             confidence REAL NOT NULL,
                             bbox_x INTEGER NOT NULL,
@@ -170,3 +168,7 @@ class StorageThread(threading.Thread):
                             error_message TEXT NOT NULL,
                             timestamp DATETIME NOT NULL DEFAULT (datetime('now'))
                         )''')
+        
+        cursor.execute('''CREATE INDEX IF NOT EXISTS idx_detections_clip_id_ts ON detections (clip_id, timestamp)''')
+
+        cursor.execute('''CREATE INDEX IF NOT EXISTS idx_clips_id ON clips (id)''')

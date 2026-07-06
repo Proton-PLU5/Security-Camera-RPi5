@@ -78,7 +78,8 @@ class CaptureThread(threading.Thread):
             logger.error(f"Error in CaptureThread: {e}")
         finally:
             if self.latest_clip_id is not None:
-                self.storage_thread.end_clip(self.latest_clip_id)
+                end_time = time.time()
+                self.storage_thread.end_clip(self.latest_clip_id, ended_at=end_time)
             self.camera.stop_encoder()
             self.camera.stop()
             self.camera.close()
@@ -96,11 +97,12 @@ class CaptureThread(threading.Thread):
             self.camera.stop_encoder()
 
             if self.latest_clip_id is not None:
-                self.storage_thread.end_clip(self.latest_clip_id)
+                end_time = time.time()
+                self.storage_thread.end_clip(self.latest_clip_id, ended_at=end_time)
 
         self.camera.start_encoder(self.encoder, output)
 
         self.current_clip_start = time.time()
         logger.info(f"Started new clip: {filename}")
 
-        return self.storage_thread.start_clip(filename)
+        return self.storage_thread.start_clip(filename, start_time=self.current_clip_start)
