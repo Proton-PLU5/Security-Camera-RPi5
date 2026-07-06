@@ -259,7 +259,7 @@ let clipIdToIndex = {};   // id -> index in clipsAsc
 let currentIndex = -1;
 let activeIsA = true;
 
-// detections cache: clipId -> { lores_size: [h, w], detections: [...] }
+// detections cache: clipId -> { lowres_size: [h, w], detections: [...] }
 // fetched/prefetched alongside video preloading, so it's ready by the
 // time playback actually reaches that clip
 const detectionsCache = {};
@@ -299,9 +299,9 @@ function drawOverlay() {
 
     const cached = detectionsCache[clip.id];
     if (cached) {
-        const [loresH, loresW] = cached.lores_size;
-        const scaleX = canvas.width / loresW;
-        const scaleY = canvas.height / loresH;
+        const [lowresH, lowresW] = cached.lowres_size;
+        const scaleX = canvas.width / lowresW;
+        const scaleY = canvas.height / lowresH;
 
         const t = active.currentTime;
         const TOLERANCE = 0.2;  // seconds - groups one inference batch's boxes together
