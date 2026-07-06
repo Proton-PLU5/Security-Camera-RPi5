@@ -49,7 +49,7 @@ class DetectionThread(threading.Thread):
             for stage,ms in results[0].speed.items():
                 metrics.record(f"detection_{stage}", ms / 1000.0)  # convert to seconds
 
-            detected_at = time()
+            detected_at = time() * 1000
                 
             self.detection_store.update(
                 Detection(timestamp=timestamp, boxes=results, frame_size=lowres_frame.shape[:2])
