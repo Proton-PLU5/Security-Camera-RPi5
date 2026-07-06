@@ -113,6 +113,7 @@ class StreamThread(threading.Thread):
         app.router.add_get("/clips", self.handle_clips_list)
         app.router.add_get("/clips/find", self.handle_clip_find)
         app.router.add_get("/clips/{clip_id}", self.handle_clip_file)
+        app.router.add_get("/clips/{clip_id}/detections", self.handle_clip_detections)
 
         self.runner = web.AppRunner(app)
         await self.runner.setup()
@@ -224,7 +225,7 @@ class StreamThread(threading.Thread):
 
             detections = [
                 {
-                    "offset": row[0] - clip_row[0],
+                    "offset_seconds": row[0] - clip_row[0],
                     "class_name": row[1],
                     "confidence": row[2],
                     "bbox_x": row[3],
@@ -235,7 +236,10 @@ class StreamThread(threading.Thread):
                 for row in cursor.fetchall()
             ]
 
-            return detections
+            return {
+                "lowres_size": list(self.lowres_size),
+                "detections": detections,
+            }
         finally:
             connection.close()
 
@@ -248,8 +252,12 @@ class StreamThread(threading.Thread):
         if not timestamp:
             return web.json_response({"error": "Missing timestamp parameter"}, status=400)
         
-        timestamp_epoch = float(timestamp)
-        
+        try:
+            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            timestamp_epoch = dt.timestamp()
+        except ValueError:
+            return web.json_response({"error": "Invalid timestamp format."}, status=400)
+
         clip = await asyncio.to_thread(self.query_clip_at, timestamp_epoch)
         if clip is None:
             return web.json_response({"error": "No clip found at the given timestamp"}, status=404)
