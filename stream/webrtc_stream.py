@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 import threading
 from typing import Optional, Tuple
@@ -6,11 +7,12 @@ from aiohttp import web
 from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription, MediaStreamTrack, VideoStreamTrack
 from av import VideoFrame
 import cv2
+from polars import datetime
 import numpy as np
-
 from capture.detection.detect import Detection, DetectionStore
-from capture.mailbox import MailBox
+import sqlite3
 from stream.frame_buffer import FrameBuffer
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -76,13 +78,12 @@ class CameraVideoTrack(VideoStreamTrack):
         video_frame.time_base = time_base
         return video_frame
     
-
-
 class StreamThread(threading.Thread):
-    def __init__(self, buffer: FrameBuffer, detection_store: DetectionStore, host: str = '0.0.0.0', port: int = 8080):
+    def __init__(self, buffer: FrameBuffer, detection_store: DetectionStore, storage_db_path: str, host: str = '0.0.0.0', port: int = 8080):
         super().__init__(daemon=True, name="StreamThread")
         self.buffer = buffer
         self.detection_store = detection_store
+        self.connection = sqlite3.connect(storage_db_path, check_same_thread=False)
         self.stop_event = threading.Event()
         self.host = host
         self.port = port
@@ -108,6 +109,11 @@ class StreamThread(threading.Thread):
         app = web.Application()
         app.router.add_get("/", self.index)
         app.router.add_post("/offer", self.handle_offer)
+
+        app.router.add_get("/clips", self.handle_clips_list)
+        app.router.add_get("/clips/find", self.handle_clip_find)
+        app.router.add_get("/clips/{clip_id}", self.handle_clip_file)
+
         self.runner = web.AppRunner(app)
         await self.runner.setup()
         site = web.TCPSite(self.runner, self.host, self.port)
@@ -142,7 +148,92 @@ class StreamThread(threading.Thread):
         await pc.setLocalDescription(answer)
 
         return web.json_response({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type})
+    
+    # --- Clip handling endpoints ---
 
+    def query_clips_list(self):
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT id, started_at, ended_at, file_path, trigger "
+                "FROM clips ORDER BY started_at DESC LIMIT 200"
+            )
+            return [
+                {"id": r[0], "started_at": r[1], "ended_at": r[2], "file_path": r[3], "trigger": r[4]}
+                for r in cursor.fetchall()
+            ]
+        finally:
+            cursor.close()
+
+    def query_clip_at(self, timestamp: str):
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT id, started_at, ended_at, file_path, trigger FROM clips "
+                "WHERE started_at <= ? AND (ended_at IS NULL OR ended_at >= ?) "
+                "ORDER BY started_at DESC LIMIT 1",
+                (timestamp, timestamp),
+            )
+            row = cursor.fetchone()
+            if row is not None:
+                return {"id": row[0], "started_at": row[1], "ended_at": row[2], "file_path": row[3], "trigger": row[4]}
+            return None
+        finally:
+            cursor.close()
+
+    def query_clip_by_id(self, clip_id: str):
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                "SELECT id, started_at, ended_at, file_path, trigger FROM clips WHERE id = ?",
+                (clip_id,),
+            )
+            row = cursor.fetchone()
+            if row is not None:
+                return {"id": row[0], "started_at": row[1], "ended_at": row[2], "file_path": row[3], "trigger": row[4]}
+            return None
+        finally:
+            cursor.close()
+
+    async def handle_clips_list(self, request: web.Request) -> web.Response:
+        clips = await asyncio.to_thread(self.query_clips_list)
+        return web.json_response(clips)
+    
+    async def handle_clip_find(self, request: web.Request) -> web.Response:
+        timestamp = request.query.get("timestamp")
+        if not timestamp:
+            return web.json_response({"error": "Missing timestamp parameter"}, status=400)
+        
+        try:
+            # Expect timestamp in ISO 8601 format
+            dt = datetime.fromisoformat(timestamp)
+            timestamp_utc = dt.astimezone(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return web.json_response({"error": "Invalid timestamp format, expected ISO 8601"}, status=400)
+        
+        clip = await asyncio.to_thread(self.query_clip_at, timestamp_utc)
+        if clip is None:
+            return web.json_response({"error": "No clip found at the given timestamp"}, status=404)
+        
+        return web.json_response(clip)
+    
+    async def handle_clip_file(self, request: web.Request) -> web.StreamResponse:
+        clip_id = str(request.match_info.get("clip_id"))
+
+        if not clip_id:
+            return web.json_response({"error": "Missing clip_id parameter"}, status=400)
+
+        clip = await asyncio.to_thread(self.query_clip_by_id, clip_id)
+
+        if clip is None:
+            return web.json_response({"error": "Clip not found"}, status=404)
+        
+        path = Path(clip["file_path"])
+        if not path.exists():
+            return web.json_response({"error": "File not found"}, status=404)
+        
+        return web.FileResponse(path)
+    
     async def shutdown(self):
         for pc in list(self.pcs):
             await pc.close()
@@ -150,6 +241,8 @@ class StreamThread(threading.Thread):
         self.pcs.clear()
         if self.runner is not None:
             await self.runner.cleanup()
+
+        self.connection.close()
 
     async def index(self, request: web.Request) -> web.FileResponse:
         return web.FileResponse("stream/viewer.html")

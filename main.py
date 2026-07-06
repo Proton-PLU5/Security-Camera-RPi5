@@ -22,8 +22,9 @@ ncnn.Net.load_param = _load_param_with_thread_limit # type: ignore
 
 def main():    
     model = YOLO("./capture/detection/yolo26s_ncnn_model")  # Load the YOLO model
+    data_base_path = "storage.db"
 
-    storage_thread = StorageThread()
+    storage_thread = StorageThread(db_path=data_base_path)
     storage_thread.start()
 
     detection_mailbox = MailBox()
@@ -48,7 +49,8 @@ def main():
     detection_thread.start()
 
     stream_thread = StreamThread(
-        buffer=stream_buffer, 
+        buffer=stream_buffer,
+        storage_db_path=data_base_path,
         detection_store=detection_store)
     stream_thread.start()
 
