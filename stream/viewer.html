@@ -263,6 +263,7 @@ let activeIsA = true;
 // fetched/prefetched alongside video preloading, so it's ready by the
 // time playback actually reaches that clip
 const detectionsCache = {};
+let lastLogSecond = -1;
 
 async function fetchDetections(clipId) {
     if (!clipId || detectionsCache[clipId]) return;
@@ -270,6 +271,12 @@ async function fetchDetections(clipId) {
         const res = await fetch("/clips/" + clipId + "/detections");
         if (!res.ok) return;
         detectionsCache[clipId] = await res.json();
+        
+        // LOG 1: Did we actually get boxes from the database?
+        console.log(`[API] Loaded ${detectionsCache[clipId].detections.length} boxes for clip ${clipId}`);
+        if (detectionsCache[clipId].detections.length > 0) {
+            console.log(`[API] Sample box data:`, detectionsCache[clipId].detections[0]);
+        }
     } catch (err) {
         console.error("Failed to fetch detections for", clipId, err);
     }
@@ -288,9 +295,6 @@ function drawOverlay() {
         return;
     }
 
-    // match canvas pixel buffer to the video's actual decoded resolution -
-    // CSS (100% width/height, same positioning as the video) handles
-    // scaling both identically for whatever size they're displayed at
     if (canvas.width !== active.videoWidth || canvas.height !== active.videoHeight) {
         canvas.width = active.videoWidth;
         canvas.height = active.videoHeight;
@@ -304,15 +308,35 @@ function drawOverlay() {
         const scaleY = canvas.height / lowresH;
 
         const t = active.currentTime;
-        const TOLERANCE = 1;  // seconds - groups one inference batch's boxes together
+        const TOLERANCE = 1;  // seconds
+
+        // LOG 2: Check the timeline math once per second
+        const currentSecond = Math.floor(t);
+        if (currentSecond !== lastLogSecond) {
+            lastLogSecond = currentSecond;
+            console.log(`\n--- [Sync Check] Player Time: ${t.toFixed(2)}s ---`);
+            
+            if (cached.detections.length === 0) {
+                console.log("-> No detections available to draw.");
+            } else {
+                const sample = cached.detections[0];
+                const diff = Math.abs(sample.offset_seconds - t);
+                console.log(`-> First Box Offset: ${sample.offset_seconds.toFixed(2)}s`);
+                console.log(`-> Math Check: Is diff (${diff.toFixed(2)}s) <= Tolerance (${TOLERANCE})? ${diff <= TOLERANCE ? "YES (Drawing!)" : "NO (Skipping)"}`);
+            }
+        }
 
         ctx.strokeStyle = "#00ff88";
         ctx.lineWidth = 2;
         ctx.font = "14px sans-serif";
         ctx.fillStyle = "#00ff88";
 
+        let boxesDrawn = 0;
+
         for (const d of cached.detections) {
             if (Math.abs(d.offset_seconds - t) > TOLERANCE) continue;
+            
+            boxesDrawn++;
             const x = d.bbox_x * scaleX;
             const y = d.bbox_y * scaleY;
             const w = d.bbox_width * scaleX;
@@ -320,11 +344,17 @@ function drawOverlay() {
             ctx.strokeRect(x, y, w, h);
             ctx.fillText(`${d.class_name} ${d.confidence.toFixed(2)}`, x, Math.max(y - 4, 10));
         }
+        
+        // LOG 3: Confirm if rendering actually executed
+        if (boxesDrawn > 0 && currentSecond !== lastLogSecond) {
+             console.log(`-> SUCCESS: Drew ${boxesDrawn} boxes to the canvas this frame.`);
+        }
     }
 
     requestAnimationFrame(drawOverlay);
 }
-requestAnimationFrame(drawOverlay);  // runs continuously; no-ops until a clip is actually selected
+requestAnimationFrame(drawOverlay);
+
 
 function getClipVideos() {
     return {
