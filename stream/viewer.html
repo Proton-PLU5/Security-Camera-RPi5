@@ -416,8 +416,8 @@ function formatClipLabel(clip) {
             return `Clip #${clip.id} (Invalid Date) [${clip.trigger || 'unknown'}]`;
         }
 
-        const start = new Date(startTime * 1000);
-        const end = endTime ? new Date(endTime * 1000) : null;
+        const start = new Date(startTime);
+        const end = endTime ? new Date(endTime) : null;
         
         const label = start.toLocaleString() + (end ? " \u2192 " + end.toLocaleTimeString() : " (in progress)");
         
