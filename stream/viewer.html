@@ -285,14 +285,12 @@ async function fetchDetections(clipId) {
 function drawOverlay() {
     const canvas = document.getElementById("clip-overlay");
     const ctx = canvas.getContext("2d");
-
     const { active } = getClipVideos();
     const clip = clipsAsc[currentIndex];
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     if (!active || !clip || !active.videoWidth) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
         requestAnimationFrame(drawOverlay);
         return;
     }
@@ -301,58 +299,44 @@ function drawOverlay() {
         canvas.width = active.videoWidth;
         canvas.height = active.videoHeight;
     }
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const cached = detectionsCache[clip.id];
     if (cached) {
-        const [lowresW, lowresH] = cached.lowres_size;
-        const scaleX = canvas.width / lowresW;
-        const scaleY = canvas.height / lowresH;
-
         const t = active.currentTime;
-        const TOLERANCE = 1;  // seconds
+        const scaleX = canvas.width / cached.lowres_size[0];
+        const scaleY = canvas.height / cached.lowres_size[1];
 
-        // LOG 2: Check the timeline math once per second
-        const currentSecond = Math.floor(t);
-        if (currentSecond !== lastLogSecond) {
-            lastLogSecond = currentSecond;
-            console.log(`\n--- [Sync Check] Player Time: ${t.toFixed(2)}s ---`);
-            
-            if (cached.detections.length === 0) {
-                console.log("-> No detections available to draw.");
-            } else {
-                const sample = cached.detections[0];
-                const diff = Math.abs(sample.offset_seconds - t);
-                console.log(`-> First Box Offset: ${sample.offset_seconds.toFixed(2)}s`);
-                console.log(`-> Math Check: Is diff (${diff.toFixed(2)}s) <= Tolerance (${TOLERANCE})? ${diff <= TOLERANCE ? "YES (Drawing!)" : "NO (Skipping)"}`);
+        // 1. Find the distinct timestamp in the cache that is closest to our video time 't'
+        // We use a small epsilon (0.05s) to account for slight float imprecision
+        let closestTimestamp = null;
+        let minDiff = 0.05; 
+
+        for (const d of cached.detections) {
+            const diff = Math.abs(d.offset_seconds - t);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestTimestamp = d.offset_seconds;
             }
         }
 
-        ctx.strokeStyle = "#00ff88";
-        ctx.lineWidth = 2;
-        ctx.font = "14px sans-serif";
-        ctx.fillStyle = "#00ff88";
-
-        let boxesDrawn = 0;
-
-        for (const d of cached.detections) {
-            if (Math.abs(d.offset_seconds - t) > TOLERANCE) continue;
+        // 2. If we found a valid shot, render ALL boxes that share that exact timestamp
+        if (closestTimestamp !== null) {
+            const currentShot = cached.detections.filter(d => d.offset_seconds === closestTimestamp);
             
-            boxesDrawn++;
-            const x = d.bbox_x * scaleX;
-            const y = d.bbox_y * scaleY;
-            const w = d.bbox_width * scaleX;
-            const h = d.bbox_height * scaleY;
-            ctx.strokeRect(x, y, w, h);
-            ctx.fillText(`${d.class_name} ${d.confidence.toFixed(2)}`, x, Math.max(y - 4, 10));
-        }
-        
-        // LOG 3: Confirm if rendering actually executed
-        if (boxesDrawn > 0 && currentSecond !== lastLogSecond) {
-             console.log(`-> SUCCESS: Drew ${boxesDrawn} boxes to the canvas this frame.`);
+            ctx.strokeStyle = "#00ff88";
+            ctx.lineWidth = 2;
+            ctx.fillStyle = "#00ff88";
+
+            for (const d of currentShot) {
+                const x = d.bbox_x * scaleX;
+                const y = d.bbox_y * scaleY;
+                const w = d.bbox_width * scaleX;
+                const h = d.bbox_height * scaleY;
+                ctx.strokeRect(x, y, w, h);
+                ctx.fillText(`${d.class_name} ${d.confidence.toFixed(2)}`, x, Math.max(y - 4, 10));
+            }
         }
     }
-
     requestAnimationFrame(drawOverlay);
 }
 requestAnimationFrame(drawOverlay);
