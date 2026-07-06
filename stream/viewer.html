@@ -406,10 +406,11 @@ document.getElementById("clip-video-a").addEventListener("ended", () => handleCl
 document.getElementById("clip-video-b").addEventListener("ended", () => handleClipEnded(false));
 
 function formatClipLabel(clip) {
-    // started_at/ended_at come back as UTC strings from sqlite - append
-    // 'Z' so the browser's Date parser treats them as UTC, not local.
-    const start = new Date(clip.started_at.replace(" ", "T") + "Z");
-    const end = clip.ended_at ? new Date(clip.ended_at.replace(" ", "T") + "Z") : null;
+    // Multiply by 1000 because JavaScript expects milliseconds, 
+    // while Python/SQLite stores Unix time in seconds.
+    const start = new Date(clip.started_at * 1000);
+    const end = clip.ended_at ? new Date(clip.ended_at * 1000) : null;
+    
     const label = start.toLocaleString() + (end ? " \u2192 " + end.toLocaleTimeString() : " (in progress)");
     return `${label} [${clip.trigger}]`;
 }
