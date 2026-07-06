@@ -28,6 +28,95 @@ video {
     margin: 16px;
     font-size: 16px;
 }
+
+/* --- added for clip browsing/playback, nothing above this changed --- */
+
+.panel {
+    margin: 32px auto;
+    padding: 16px;
+    max-width: 1200px;
+    width: 95vw;
+    border: 1px solid #333;
+    border-radius: 6px;
+    text-align: left;
+    box-sizing: border-box;
+}
+
+.row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.row input, .row button {
+    background: #222;
+    color: white;
+    border: 1px solid #444;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.row button {
+    cursor: pointer;
+}
+
+.row button:hover {
+    background: #333;
+}
+
+#clip-error {
+    color: #f66;
+    font-size: 13px;
+    min-height: 18px;
+}
+
+ul#clip-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+ul#clip-list li {
+    padding: 8px;
+    border-bottom: 1px solid #2a2a2a;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+ul#clip-list li:hover {
+    background: #1a1a1a;
+}
+
+ul#clip-list li.playing {
+    background: #223;
+}
+
+/* double-buffered playback: both videos occupy the same box, only one
+   visible at a time - swapping visibility (not src) avoids the
+   black-frame/rebuffer flash a naive src-swap would cause */
+#clip-player {
+    position: relative;
+    width: 95vw;
+    max-width: 1200px;
+    margin: 0 auto 16px;
+    aspect-ratio: 16 / 9;
+    background: black;
+    display: none;
+}
+
+#clip-player video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+}
 </style>
 </head>
 
@@ -38,6 +127,25 @@ video {
 <video id="video" autoplay playsinline controls></video>
 
 <div id="status">Starting...</div>
+
+<div class="panel">
+    <h2>Recorded Clips</h2>
+
+    <div class="row">
+        <label for="clip-time">Jump to time:</label>
+        <input type="datetime-local" id="clip-time" step="1">
+        <button id="find-clip-btn">Find clip</button>
+        <button id="refresh-list-btn">Refresh list</button>
+    </div>
+    <div id="clip-error"></div>
+
+    <div id="clip-player">
+        <video id="clip-video-a" playsinline></video>
+        <video id="clip-video-b" playsinline style="display:none;"></video>
+    </div>
+
+    <ul id="clip-list"></ul>
+</div>
 
 <script>
 
@@ -130,6 +238,168 @@ start().catch(err => {
     console.error(err);
     log(err.toString());
 });
+
+// ============ everything below here is new: clip browsing/playback ============
+// (double-buffered, auto-advancing - see chat for how the swap-not-reload trick works)
+
+let clipsAsc = [];        // chronological order (oldest -> newest), for sequencing
+let clipIdToIndex = {};   // id -> index in clipsAsc
+let currentIndex = -1;
+let activeIsA = true;
+
+function getClipVideos() {
+    return {
+        active: document.getElementById(activeIsA ? "clip-video-a" : "clip-video-b"),
+        hidden: document.getElementById(activeIsA ? "clip-video-b" : "clip-video-a"),
+    };
+}
+
+function clipUrl(clipId) {
+    return "/clips/" + clipId;
+}
+
+function preloadNextClip(index) {
+    const { hidden } = getClipVideos();
+    if (index >= 0 && index < clipsAsc.length) {
+        hidden.src = clipUrl(clipsAsc[index].id);
+        hidden.load();  // starts buffering without playing
+    } else {
+        hidden.removeAttribute("src");
+        hidden.load();
+    }
+}
+
+function highlightPlayingClip(clipId) {
+    document.querySelectorAll("#clip-list li").forEach((li) => {
+        li.classList.toggle("playing", li.dataset.clipId === clipId);
+    });
+}
+
+function playClipAtIndex(index) {
+    if (index < 0 || index >= clipsAsc.length) return;
+    currentIndex = index;
+    activeIsA = true;
+
+    document.getElementById("clip-player").style.display = "block";
+
+    const active = document.getElementById("clip-video-a");
+    const hidden = document.getElementById("clip-video-b");
+    active.style.display = "block";
+    hidden.style.display = "none";
+
+    active.src = clipUrl(clipsAsc[index].id);
+    active.play().catch(console.error);
+    highlightPlayingClip(clipsAsc[index].id);
+
+    preloadNextClip(index + 1);
+}
+
+function handleClipEnded(sourceIsA) {
+    if (sourceIsA !== activeIsA) return;  // stale event from the already-inactive video
+    advanceToNextClip();
+}
+
+function advanceToNextClip() {
+    const nextIndex = currentIndex + 1;
+    if (nextIndex >= clipsAsc.length) {
+        document.getElementById("clip-error").textContent = "End of recorded clips.";
+        return;
+    }
+
+    activeIsA = !activeIsA;
+    currentIndex = nextIndex;
+
+    const { active, hidden } = getClipVideos();
+    active.style.display = "block";
+    hidden.style.display = "none";
+    // active's src was already set by the previous preloadNextClip() call,
+    // so this resumes an already-buffering video rather than issuing a
+    // fresh network request - that's what keeps the transition tight.
+    active.play().catch(console.error);
+    highlightPlayingClip(clipsAsc[nextIndex].id);
+
+    preloadNextClip(nextIndex + 1);
+}
+
+document.getElementById("clip-video-a").addEventListener("ended", () => handleClipEnded(true));
+document.getElementById("clip-video-b").addEventListener("ended", () => handleClipEnded(false));
+
+function formatClipLabel(clip) {
+    // started_at/ended_at come back as UTC strings from sqlite - append
+    // 'Z' so the browser's Date parser treats them as UTC, not local.
+    const start = new Date(clip.started_at.replace(" ", "T") + "Z");
+    const end = clip.ended_at ? new Date(clip.ended_at.replace(" ", "T") + "Z") : null;
+    const label = start.toLocaleString() + (end ? " \u2192 " + end.toLocaleTimeString() : " (in progress)");
+    return `${label} [${clip.trigger}]`;
+}
+
+async function refreshClipList() {
+    const list = document.getElementById("clip-list");
+    list.innerHTML = "<li>Loading...</li>";
+    try {
+        const res = await fetch("/clips");
+        const clipsDesc = await res.json();  // server returns newest-first
+
+        clipsAsc = [...clipsDesc].reverse();  // oldest-first, for sequencing
+        clipIdToIndex = {};
+        clipsAsc.forEach((c, i) => { clipIdToIndex[c.id] = i; });
+
+        list.innerHTML = "";
+        // display newest-first (more natural for browsing), but each
+        // entry's click handler looks up its chronological index for playback
+        for (const clip of clipsDesc) {
+            const li = document.createElement("li");
+            li.textContent = formatClipLabel(clip);
+            li.dataset.clipId = clip.id;
+            li.onclick = () => playClipAtIndex(clipIdToIndex[clip.id]);
+            list.appendChild(li);
+        }
+        if (clipsDesc.length === 0) {
+            list.innerHTML = "<li>No clips recorded yet.</li>";
+        }
+    } catch (err) {
+        list.innerHTML = "<li>Failed to load clips.</li>";
+        console.error(err);
+    }
+}
+
+async function findClipAtTime() {
+    const errorEl = document.getElementById("clip-error");
+    errorEl.textContent = "";
+
+    const input = document.getElementById("clip-time").value;
+    if (!input) {
+        errorEl.textContent = "Pick a date/time first.";
+        return;
+    }
+
+    // datetime-local gives local time with no timezone info - convert to
+    // a real Date (interpreted as local) then to UTC ISO, since the
+    // server compares against UTC-stored timestamps.
+    const isoUtc = new Date(input).toISOString();
+
+    try {
+        const res = await fetch("/clips/find?timestamp=" + encodeURIComponent(isoUtc));
+        if (!res.ok) {
+            const body = await res.json();
+            errorEl.textContent = body.error || "No clip found for that time.";
+            return;
+        }
+        const clip = await res.json();
+        if (!(clip.id in clipIdToIndex)) {
+            await refreshClipList();
+        }
+        playClipAtIndex(clipIdToIndex[clip.id]);
+    } catch (err) {
+        errorEl.textContent = "Request failed.";
+        console.error(err);
+    }
+}
+
+document.getElementById("find-clip-btn").addEventListener("click", findClipAtTime);
+document.getElementById("refresh-list-btn").addEventListener("click", refreshClipList);
+
+refreshClipList();
 
 </script>
 
