@@ -406,13 +406,29 @@ document.getElementById("clip-video-a").addEventListener("ended", () => handleCl
 document.getElementById("clip-video-b").addEventListener("ended", () => handleClipEnded(false));
 
 function formatClipLabel(clip) {
-    // Multiply by 1000 because JavaScript expects milliseconds, 
-    // while Python/SQLite stores Unix time in seconds.
-    const start = new Date(clip.started_at * 1000);
-    const end = clip.ended_at ? new Date(clip.ended_at * 1000) : null;
-    
-    const label = start.toLocaleString() + (end ? " \u2192 " + end.toLocaleTimeString() : " (in progress)");
-    return `${label} [${clip.trigger}]`;
+    try {
+        // Ensure we have a valid number. If it's a string from a previous 
+        // database state, parseFloat handles it.
+        const startTime = typeof clip.started_at === 'string' ? parseFloat(clip.started_at) : clip.started_at;
+        const endTime = typeof clip.ended_at === 'string' ? parseFloat(clip.ended_at) : clip.ended_at;
+
+        if (!startTime || isNaN(startTime)) {
+            return `Clip #${clip.id} (Invalid Date) [${clip.trigger || 'unknown'}]`;
+        }
+
+        const start = new Date(startTime * 1000);
+        const end = endTime ? new Date(endTime * 1000) : null;
+        
+        const label = start.toLocaleString() + (end ? " \u2192 " + end.toLocaleTimeString() : " (in progress)");
+        
+        // Safely fallback if trigger is null/undefined
+        const trigger = clip.trigger ? clip.trigger : "unknown";
+        
+        return `${label} [${trigger}]`;
+    } catch (e) {
+        console.error("Error formatting single clip data:", clip, e);
+        return `Clip #${clip.id || 'unknown'} formatting error`;
+    }
 }
 
 async function refreshClipList() {
