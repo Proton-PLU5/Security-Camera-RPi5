@@ -151,7 +151,7 @@ class StreamThread(threading.Thread):
     # --- Clip handling endpoints ---
 
     def query_clips_list(self):
-        connection = sqlite3.connect(self.storage_db_path)
+        connection = sqlite3.connect(self.storage_db_path, timeout=5.0)
         try:
             cursor = connection.cursor()
 
@@ -169,9 +169,10 @@ class StreamThread(threading.Thread):
             ]
         finally:
             cursor.close()
+            connection.close()
 
     def query_clip_at(self, timestamp: str):
-        connection = sqlite3.connect(self.storage_db_path)
+        connection = sqlite3.connect(self.storage_db_path, timeout=5.0)
         try:
             cursor = connection.cursor()
 
@@ -191,9 +192,10 @@ class StreamThread(threading.Thread):
             return None
         finally:
             cursor.close()
+            connection.close()
 
     def query_clip_by_id(self, clip_id: str):
-        connection = sqlite3.connect(self.storage_db_path)
+        connection = sqlite3.connect(self.storage_db_path, timeout=5.0)
         try:
             cursor = connection.cursor()
 
@@ -211,6 +213,7 @@ class StreamThread(threading.Thread):
             return None
         finally:
             cursor.close()
+            connection.close()
 
     async def handle_clips_list(self, request: web.Request) -> web.Response:
         clips = await asyncio.to_thread(self.query_clips_list)
