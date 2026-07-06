@@ -155,10 +155,6 @@ class StreamThread(threading.Thread):
         try:
             cursor = connection.cursor()
 
-            if cursor is None:
-                logger.error("Failed to create database cursor.")
-                return []
-            
             cursor.execute(
                 "SELECT id, started_at, ended_at, file_path, trigger "
                 "FROM clips ORDER BY started_at DESC LIMIT 200"
@@ -175,10 +171,6 @@ class StreamThread(threading.Thread):
         connection = sqlite3.connect(self.storage_db_path, timeout=5.0)
         try:
             cursor = connection.cursor()
-
-            if cursor is None:
-                logger.error("Failed to create database cursor.")
-                return None
                 
             cursor.execute(
                 "SELECT id, started_at, ended_at, file_path, trigger FROM clips "
@@ -198,10 +190,6 @@ class StreamThread(threading.Thread):
         connection = sqlite3.connect(self.storage_db_path, timeout=5.0)
         try:
             cursor = connection.cursor()
-
-            if cursor is None:
-                logger.error("Failed to create database cursor.")
-                return None
             
             cursor.execute(
                 "SELECT id, started_at, ended_at, file_path, trigger FROM clips WHERE id = ?",
