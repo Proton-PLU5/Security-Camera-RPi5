@@ -282,34 +282,20 @@ async function fetchDetections(clipId) {
     }
 }
 
+let lastRenderedSnapshot = null;
 function drawOverlay() {
-    const canvas = document.getElementById("clip-overlay");
-    const ctx = canvas.getContext("2d");
-    const { active } = getClipVideos();
-    const clip = clipsAsc[currentIndex];
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (!active || !clip || !active.videoWidth) {
-        requestAnimationFrame(drawOverlay);
-        return;
-    }
-
-    if (canvas.width !== active.videoWidth || canvas.height !== active.videoHeight) {
-        canvas.width = active.videoWidth;
-        canvas.height = active.videoHeight;
-    }
-
+    // ... (keep your existing setup logic: clearRect, getClipVideos, etc.) ...
+    
+    // We do NOT clearRect here immediately, because we want to persist 
+    // the last frame if we don't find a new one.
+    
     const cached = detectionsCache[clip.id];
     if (cached) {
         const t = active.currentTime;
-        const scaleX = canvas.width / cached.lowres_size[0];
-        const scaleY = canvas.height / cached.lowres_size[1];
-
-        // 1. Find the distinct timestamp in the cache that is closest to our video time 't'
-        // We use a small epsilon (0.05s) to account for slight float imprecision
+        
+        // 1. Look for the closest snapshot
         let closestTimestamp = null;
-        let minDiff = 0.05; 
+        let minDiff = 0.1; // Tolerance for how far apart we look for a match
 
         for (const d of cached.detections) {
             const diff = Math.abs(d.offset_seconds - t);
@@ -319,15 +305,18 @@ function drawOverlay() {
             }
         }
 
-        // 2. If we found a valid shot, render ALL boxes that share that exact timestamp
+        // 2. If we find a new match, update the buffer
         if (closestTimestamp !== null) {
-            const currentShot = cached.detections.filter(d => d.offset_seconds === closestTimestamp);
-            
-            ctx.strokeStyle = "#00ff88";
-            ctx.lineWidth = 2;
-            ctx.fillStyle = "#00ff88";
+            lastRenderedSnapshot = cached.detections.filter(d => d.offset_seconds === closestTimestamp);
+        } else if (minDiff > 0.5) { 
+            // If we are more than 0.5s away from ANY detection, clear the display
+            lastRenderedSnapshot = null;
+        }
 
-            for (const d of currentShot) {
+        // 3. Clear and draw the buffer
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (lastRenderedSnapshot) {
+            for (const d of lastRenderedSnapshot) {
                 const x = d.bbox_x * scaleX;
                 const y = d.bbox_y * scaleY;
                 const w = d.bbox_width * scaleX;
