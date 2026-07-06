@@ -51,7 +51,7 @@ class CaptureThread(threading.Thread):
 
         try:
             while not self.stop_event.is_set():
-                if self.clip_length and (time.time() - self.current_clip_start > self.clip_length):
+                if self.clip_length and ((time.time() * 1000) - self.current_clip_start > (self.clip_length * 1000)):
                     self.latest_clip_id = self.start_new_clip()
                 
                 request = self.camera.capture_request()

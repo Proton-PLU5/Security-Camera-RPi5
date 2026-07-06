@@ -304,7 +304,7 @@ function drawOverlay() {
         const scaleY = canvas.height / lowresH;
 
         const t = active.currentTime;
-        const TOLERANCE = 0.2;  // seconds - groups one inference batch's boxes together
+        const TOLERANCE = 1;  // seconds - groups one inference batch's boxes together
 
         ctx.strokeStyle = "#00ff88";
         ctx.lineWidth = 2;

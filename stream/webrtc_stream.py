@@ -225,7 +225,7 @@ class StreamThread(threading.Thread):
 
             detections = [
                 {
-                    "offset_seconds": row[0] - clip_row[0],
+                    "offset_seconds": (row[0] - clip_row[0]) / 1000.0,
                     "class_name": row[1],
                     "confidence": row[2],
                     "bbox_x": row[3],
@@ -254,7 +254,7 @@ class StreamThread(threading.Thread):
         
         try:
             dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-            timestamp_epoch = dt.timestamp()
+            timestamp_epoch = dt.timestamp() * 1000
         except ValueError:
             return web.json_response({"error": "Invalid timestamp format."}, status=400)
 
