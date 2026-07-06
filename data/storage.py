@@ -132,10 +132,10 @@ class StorageThread(threading.Thread):
         elif cmd.type == 'insert_detection':
             cursor.execute(
                 '''INSERT INTO detections
-                   (clip_id, class_name, confidence, bbox_x, bbox_y, bbox_width, bbox_height)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                (p['clip_id'], p['class_name'], p['confidence'],
-                 p['bbox_x'], p['bbox_y'], p['bbox_width'], p['bbox_height'])
+                (clip_id, timestamp, class_name, confidence, bbox_x, bbox_y, bbox_width, bbox_height)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                (p['clip_id'], p['timestamp'], p['class_name'], p['confidence'],
+                p['bbox_x'], p['bbox_y'], p['bbox_width'], p['bbox_height'])
             )
         else:
             raise ValueError(f'Unknown command type: {cmd.type}')
