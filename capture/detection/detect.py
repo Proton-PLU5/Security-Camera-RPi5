@@ -48,10 +48,15 @@ class DetectionThread(threading.Thread):
             results = self.model(lowres_frame, verbose=False)
             for stage,ms in results[0].speed.items():
                 metrics.record(f"detection_{stage}", ms / 1000.0)  # convert to seconds
+
+            detected_at = time()
                 
             self.detection_store.update(
                 Detection(timestamp=timestamp, boxes=results, frame_size=lowres_frame.shape[:2])
             )
+
+            if clip_id is None:
+                continue  # No active clip, skip storage
 
             for result in results:
                 if result.boxes is None:
@@ -61,10 +66,14 @@ class DetectionThread(threading.Thread):
                     class_id = int(box.cls.item())
                     class_name = self.model.names[class_id]
                     confidence = float(box.conf.item())
-                    bbox_x, bbox_y, bbox_width, bbox_height = map(int, box.xywh[0])
+
+                    x1, y1, x2, y2 = box.xyxy[0].tolist()
+                    bbox_x, bbox_y = int(x1), int(y1)
+                    bbox_width, bbox_height = int(x2 - x1), int(y2 - y1)
 
                     self.storage_thread.insert_detection(
                         clip_id=clip_id,
+                        timestamp=detected_at,
                         class_name=class_name,
                         confidence=confidence,
                         bbox_x=bbox_x,
