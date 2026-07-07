@@ -77,6 +77,7 @@ def main():
         host=config.getString("stream_host", "0.0.0.0"),
         port=config.getInt("stream_port", 8080),
         lowres_size=(config.getInt("stream_width", 640), config.getInt("stream_height", 640)),
+        face_recognition=face_recognition,
         face_mailbox=face_mailbox
     )
     stream_thread.start()
