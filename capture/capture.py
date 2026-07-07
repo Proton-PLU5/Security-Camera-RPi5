@@ -72,7 +72,7 @@ class CaptureThread(threading.Thread):
                     self.detection_mailbox.put((lowres_frame, stream_frame, timestamp, self.latest_clip_id))
 
                 with metrics.time("streambuf"):
-                    self.stream_buffer.put(stream_frame)
+                    self.stream_buffer.put(lowres_frame)
         except Exception as e:
             logger.error(f"Error in CaptureThread: {e}")
         finally:
