@@ -85,7 +85,7 @@ class DetectionThread(threading.Thread):
             if item is None:
                 continue
             
-            lowres_frame, timestamp, clip_id = item
+            lowres_frame, stream_frame, timestamp, clip_id = item
             results = self.model(lowres_frame, verbose=False)
             for stage,ms in results[0].speed.items():
                 metrics.record(f"detection_{stage}", ms / 1000.0)  # convert to seconds
@@ -134,7 +134,7 @@ class DetectionThread(threading.Thread):
                         any_person_detected = True
 
                         crop, crop_origin = crop_person_for_face_recognition(
-                            frame=lowres_frame,
+                            frame=stream_frame,
                             lowres_box_xyxy=(bbox_x, bbox_y, bbox_x + bbox_width, bbox_y + bbox_height),
                             lowres_size=lowres_frame.shape[1::-1],
                         )
