@@ -113,6 +113,7 @@ def main():
     try:
         app.run()
     finally:
+        config.save_configurations()
         capture_thread.stop()
         capture_thread.join()
         detection_thread.stop()
