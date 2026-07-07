@@ -26,5 +26,10 @@ class MailBox:
             self.event.clear()
             return item
         
+    def wake(self):
+        """ Wake up any waiting threads without providing an item. """
+        with self.lock:
+            self.event.set()
+        
     def empty(self) -> bool:
         return not self.event.is_set()

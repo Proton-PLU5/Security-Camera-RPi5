@@ -1,12 +1,14 @@
 import logging
 import ncnn
+from capture.recognition.face_queue import SnapshotAtomicQueue
+from capture.recognition.face_recognition import FaceRecognition, FaceRecognitionThread
 from data.storage import StorageThread
 from capture.capture import CaptureThread
 from capture.mailbox import MailBox
 from capture.detection.detect import DetectionThread, DetectionStore
 from stream.frame_buffer import FrameBuffer
 from stream.webrtc_stream import StreamThread
-from ultralytics import YOLO
+from ultralytics import YOLO # type: ignore
 from data.metrics import metrics
 from app.vision_app import VisionApp, TextualLogHandler
 from firmware.config import Config
@@ -16,7 +18,7 @@ from firmware.config import Config
 _orig_load_param = ncnn.Net.load_param # type: ignore
 
 def _load_param_with_thread_limit(self, path):
-    self.opt.num_threads = 2  # set before weights get packed
+    self.opt.num_threads = 1  # set before weights get packed
     return _orig_load_param(self, path)
 
 ncnn.Net.load_param = _load_param_with_thread_limit # type: ignore
@@ -32,8 +34,9 @@ def main():
 
     detection_mailbox = MailBox()
     detection_store = DetectionStore()
-
     stream_buffer = FrameBuffer()
+    face_queue = SnapshotAtomicQueue()
+    face_recognition = None
 
     capture_thread = CaptureThread(
         detection_mailbox=detection_mailbox, 
@@ -48,8 +51,21 @@ def main():
         mailbox=detection_mailbox, 
         detection_store=detection_store, 
         model=model, 
-        storage_thread=storage_thread)
+        storage_thread=storage_thread,
+        face_queue=face_queue)
     detection_thread.start()
+
+    face_recognition_thread = None
+
+    if config.getBoolean("enable_face_recognition", True) == True:
+        face_recognition = FaceRecognition(config)
+
+        face_recognition_thread = FaceRecognitionThread(
+            queue=face_queue,
+            face_recognition=face_recognition,
+            storage_thread=storage_thread,
+        )
+        face_recognition_thread.start()
 
     stream_thread = StreamThread(
         buffer=stream_buffer,
@@ -98,10 +114,18 @@ def main():
         capture_thread.join()
         detection_thread.stop()
         detection_thread.join()
+
+        if face_recognition_thread is not None:
+            face_queue.shutdown()
+            face_recognition_thread.stop()
+            face_recognition_thread.join()
+
         stream_thread.stop()
         stream_thread.join()
         storage_thread.stop()
         storage_thread.join()
+
+        
 
 if __name__ == "__main__":
     main()

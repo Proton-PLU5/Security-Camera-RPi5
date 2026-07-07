@@ -61,7 +61,7 @@ class CaptureThread(threading.Thread):
                         stream_frame = request.make_array("main")
 
                     with metrics.time("convert"):
-                        lowres_frame = cv2.cvtColor(lowres_frame, cv2.COLOR_YUV2RGB_I420)
+                        lowres_frame = cv2.cvtColor(lowres_frame, cv2.COLOR_YUV2RGB_I420) # type: ignore
 
                     timestamp = request.get_metadata().get("SensorTimestamp")
                 finally:
@@ -69,7 +69,7 @@ class CaptureThread(threading.Thread):
                         request.release()
 
                 with metrics.time("mailbox"):
-                    self.detection_mailbox.put((lowres_frame, timestamp, self.latest_clip_id))
+                    self.detection_mailbox.put((lowres_frame, stream_frame, timestamp, self.latest_clip_id))
 
                 with metrics.time("streambuf"):
                     self.stream_buffer.put(stream_frame)
