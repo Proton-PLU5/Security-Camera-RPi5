@@ -41,6 +41,11 @@ class StorageThread(threading.Thread):
             bbox_x=bbox_x, bbox_y=bbox_y, bbox_width=bbox_width, bbox_height=bbox_height
         ))
 
+    def insert_recognition(self, clip_id: str, timestamp: float, name: str) -> None:
+        self.enqueue('insert_recognition', dict(
+            clip_id=clip_id, timestamp=timestamp, name=name
+        ))
+
     def stop(self) -> None:
         self.enqueue('stop', {})
 
@@ -137,6 +142,13 @@ class StorageThread(threading.Thread):
                 (p['clip_id'], p['timestamp'], p['class_name'], p['confidence'],
                 p['bbox_x'], p['bbox_y'], p['bbox_width'], p['bbox_height'])
             )
+        elif cmd.type == 'insert_recognition':
+            cursor.execute(
+                '''INSERT INTO recognitions
+                (clip_id, timestamp, name)
+                VALUES (?, ?, ?)''',
+                (p['clip_id'], p['timestamp'], p['name'])
+            )
         else:
             raise ValueError(f'Unknown command type: {cmd.type}')
 
@@ -167,6 +179,13 @@ class StorageThread(threading.Thread):
                             cmd_payload TEXT NOT NULL,
                             error_message TEXT NOT NULL,
                             timestamp DATETIME NOT NULL DEFAULT (datetime('now'))
+                        )''')
+        
+        cursor.execute('''CREATE TABLE IF NOT EXISTS recognitions (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            clip_id TEXT NOT NULL REFERENCES clips (id) ON DELETE CASCADE,
+                            timestamp REAL NOT NULL,
+                            name TEXT NOT NULL
                         )''')
         
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_detections_clip_id_ts ON detections (clip_id, timestamp)''')
