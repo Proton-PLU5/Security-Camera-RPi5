@@ -29,6 +29,15 @@ video {
     font-size: 16px;
 }
 
+/* --- Added for recognitions --- */
+.recognition-label {
+    font-size: 16px;
+    color: #00ff88;
+    font-weight: bold;
+    min-height: 24px;
+    margin: 8px 0 16px 0;
+}
+
 /* --- added for clip browsing/playback, nothing above this changed --- */
 
 .panel {
@@ -134,10 +143,9 @@ ul#clip-list li.playing {
 <h2>Live Camera</h2>
 
 <video id="video" autoplay playsinline controls></video>
+<div id="live-recognitions" class="recognition-label"></div>
 
 <div id="status">Starting...</div>
-
-<!-- ============ everything below here is new ============ -->
 
 <div class="panel">
     <h2>Recorded Clips</h2>
@@ -155,6 +163,8 @@ ul#clip-list li.playing {
         <video id="clip-video-b" playsinline style="display:none;"></video>
         <canvas id="clip-overlay"></canvas>
     </div>
+    
+    <div id="clip-recognitions" class="recognition-label" style="text-align: center;"></div>
 
     <ul id="clip-list"></ul>
 </div>
@@ -251,6 +261,35 @@ start().catch(err => {
     log(err.toString());
 });
 
+// ============ Live Feed Recognitions ============
+
+async function pollLatestRecognitions() {
+    try {
+        const res = await fetch("/clips/get_latest_recognition");
+        const labelDiv = document.getElementById("live-recognitions");
+        
+        if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+                const names = data.map(r => r.name).join(", ");
+                labelDiv.textContent = "Live Recognitions: " + names;
+            } else {
+                labelDiv.textContent = "Live Recognitions: None";
+            }
+        } else if (res.status === 404) {
+            // Mailbox was empty or not found, clear label
+            labelDiv.textContent = "";
+        }
+    } catch (err) {
+        // Silently ignore connection errors during polling to prevent console spam
+    }
+    setTimeout(pollLatestRecognitions, 1000);
+}
+
+// Start polling
+pollLatestRecognitions();
+
+
 // ============ everything below here is new: clip browsing/playback ============
 // (double-buffered, auto-advancing - see chat for how the swap-not-reload trick works)
 
@@ -259,10 +298,9 @@ let clipIdToIndex = {};   // id -> index in clipsAsc
 let currentIndex = -1;
 let activeIsA = true;
 
-// detections cache: clipId -> { lowres_size: [h, w], detections: [...] }
-// fetched/prefetched alongside video preloading, so it's ready by the
-// time playback actually reaches that clip
+// caches
 const detectionsCache = {};
+const recognitionsCache = {};
 let lastLogSecond = -1;
 
 async function fetchDetections(clipId) {
@@ -271,19 +309,27 @@ async function fetchDetections(clipId) {
         const res = await fetch("/clips/" + clipId + "/detections");
         if (!res.ok) return;
         detectionsCache[clipId] = await res.json();
-        
-        // LOG 1: Did we actually get boxes from the database?
-        console.log(`[API] Loaded ${detectionsCache[clipId].detections.length} boxes for clip ${clipId}`);
-        if (detectionsCache[clipId].detections.length > 0) {
-            console.log(`[API] Sample box data:`, detectionsCache[clipId].detections[0]);
-        }
     } catch (err) {
         console.error("Failed to fetch detections for", clipId, err);
     }
 }
 
+async function fetchRecognitions(clipId) {
+    if (!clipId || recognitionsCache[clipId]) return;
+    try {
+        const res = await fetch("/clips/" + clipId + "/recognitions");
+        if (!res.ok) return;
+        recognitionsCache[clipId] = await res.json();
+    } catch (err) {
+        console.error("Failed to fetch recognitions for", clipId, err);
+    }
+}
+
 let lastValidShot = null;
 let lastValidTimestamp = -1;
+
+let lastValidRecognition = null;
+let lastValidRecTimestamp = -1;
 
 function drawOverlay() {
     const canvas = document.getElementById("clip-overlay");
@@ -303,18 +349,19 @@ function drawOverlay() {
         canvas.width = active.videoWidth;
         canvas.height = active.videoHeight;
     }
+    
+    const t = active.currentTime;
 
-    const cached = detectionsCache[clip.id];
-    if (cached) {
-        const t = active.currentTime;
-        const scaleX = canvas.width / cached.lowres_size[0];
-        const scaleY = canvas.height / cached.lowres_size[1];
+    // --- Process Detections Overlay ---
+    const cachedDet = detectionsCache[clip.id];
+    if (cachedDet) {
+        const scaleX = canvas.width / cachedDet.lowres_size[0];
+        const scaleY = canvas.height / cachedDet.lowres_size[1];
 
-        // 2. Find the closest timestamp (Expanded the search window slightly)
         let closestTimestamp = null;
-        let minDiff = 0.2; // Increased to 0.2s to be more forgiving
+        let minDiff = 0.2; 
 
-        for (const d of cached.detections) {
+        for (const d of cachedDet.detections) {
             const diff = Math.abs(d.offset_seconds - t);
             if (diff < minDiff) {
                 minDiff = diff;
@@ -322,17 +369,14 @@ function drawOverlay() {
             }
         }
 
-        // 3. Update the persistent state
         if (closestTimestamp !== null) {
-            lastValidShot = cached.detections.filter(d => d.offset_seconds === closestTimestamp);
+            lastValidShot = cachedDet.detections.filter(d => d.offset_seconds === closestTimestamp);
             lastValidTimestamp = closestTimestamp;
         } 
-        // If we are too far from the last timestamp (e.g., > 0.5s), clear the shot
         else if (Math.abs(lastValidTimestamp - t) > 0.5) {
             lastValidShot = null;
         }
 
-        // 4. Draw the persistent shot if it exists
         if (lastValidShot) {
             ctx.strokeStyle = "#00ff88";
             ctx.lineWidth = 2;
@@ -348,6 +392,40 @@ function drawOverlay() {
             }
         }
     }
+    
+    // --- Process Recognitions Text ---
+    const recDiv = document.getElementById("clip-recognitions");
+    const cachedRec = recognitionsCache[clip.id];
+    
+    if (cachedRec && cachedRec.recognitions) {
+        let closestRecTimestamp = null;
+        let minRecDiff = 0.5; // Slightly more forgiving for text
+
+        for (const r of cachedRec.recognitions) {
+            const diff = Math.abs(r.offset_seconds - t);
+            if (diff < minRecDiff) {
+                minRecDiff = diff;
+                closestRecTimestamp = r.offset_seconds;
+            }
+        }
+
+        if (closestRecTimestamp !== null) {
+            lastValidRecognition = cachedRec.recognitions.filter(r => r.offset_seconds === closestRecTimestamp);
+            lastValidRecTimestamp = closestRecTimestamp;
+        } else if (Math.abs(lastValidRecTimestamp - t) > 1.0) {
+            lastValidRecognition = null; // Clear if we drifted too far
+        }
+        
+        if (lastValidRecognition && lastValidRecognition.length > 0) {
+            const names = lastValidRecognition.map(r => r.name).join(", ");
+            recDiv.textContent = "Recognized: " + names;
+        } else {
+            recDiv.textContent = "";
+        }
+    } else {
+        recDiv.textContent = "";
+    }
+
     requestAnimationFrame(drawOverlay);
 }
 
@@ -399,6 +477,7 @@ function playClipAtIndex(index) {
     highlightPlayingClip(clipsAsc[index].id);
 
     fetchDetections(clipsAsc[index].id);
+    fetchRecognitions(clipsAsc[index].id);
     preloadNextClip(index + 1);
 }
 
@@ -427,6 +506,7 @@ function advanceToNextClip() {
     highlightPlayingClip(clipsAsc[nextIndex].id);
 
     fetchDetections(clipsAsc[nextIndex].id);
+    fetchRecognitions(clipsAsc[nextIndex].id);
     preloadNextClip(nextIndex + 1);
 }
 
@@ -435,8 +515,6 @@ document.getElementById("clip-video-b").addEventListener("ended", () => handleCl
 
 function formatClipLabel(clip) {
     try {
-        // Ensure we have a valid number. If it's a string from a previous 
-        // database state, parseFloat handles it.
         const startTime = typeof clip.started_at === 'string' ? parseFloat(clip.started_at) : clip.started_at;
         const endTime = typeof clip.ended_at === 'string' ? parseFloat(clip.ended_at) : clip.ended_at;
 
@@ -448,8 +526,6 @@ function formatClipLabel(clip) {
         const end = endTime ? new Date(endTime) : null;
         
         const label = start.toLocaleString() + (end ? " \u2192 " + end.toLocaleTimeString() : " (in progress)");
-        
-        // Safely fallback if trigger is null/undefined
         const trigger = clip.trigger ? clip.trigger : "unknown";
         
         return `${label} [${trigger}]`;
@@ -471,8 +547,6 @@ async function refreshClipList() {
         clipsAsc.forEach((c, i) => { clipIdToIndex[c.id] = i; });
 
         list.innerHTML = "";
-        // display newest-first (more natural for browsing), but each
-        // entry's click handler looks up its chronological index for playback
         for (const clip of clipsDesc) {
             const li = document.createElement("li");
             li.textContent = formatClipLabel(clip);
@@ -499,9 +573,6 @@ async function findClipAtTime() {
         return;
     }
 
-    // datetime-local gives local time with no timezone info - convert to
-    // a real Date (interpreted as local) then to UTC ISO, since the
-    // server compares against UTC-stored timestamps.
     const isoUtc = new Date(input).toISOString();
 
     try {

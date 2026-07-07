@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import numpy as np
 from capture.detection.detect import Detection, DetectionStore
 import sqlite3
+from capture.mailbox import MailBox
 from capture.recognition.face_recognition import FaceRecognition
 from stream.frame_buffer import FrameBuffer
 from pathlib import Path
@@ -87,7 +88,8 @@ class StreamThread(threading.Thread):
                  face_recognition: Optional[FaceRecognition] = None,
                  host: str = '0.0.0.0', 
                  port: int = 8080, 
-                 lowres_size: Tuple[int, int] = (640, 640)):
+                 lowres_size: Tuple[int, int] = (640, 640),
+                 face_mailbox: Optional[MailBox] = None):
         super().__init__(daemon=True, name="StreamThread")
         self.buffer = buffer
         self.detection_store = detection_store
@@ -98,6 +100,7 @@ class StreamThread(threading.Thread):
         self.lowres_size = lowres_size
         self.config = config
         self.face_recognition = face_recognition
+        self.face_mailbox = face_mailbox
 
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.runner: Optional[web.AppRunner] = None
@@ -125,7 +128,10 @@ class StreamThread(threading.Thread):
         app.router.add_get("/clips", self.handle_clips_list)
         app.router.add_get("/clips/find", self.handle_clip_find)
         app.router.add_get("/clips/{clip_id}/detections", self.handle_clip_detections)
+        app.router.add_get("/clips/{clip_id}/recognitions", self.handle_clip_recognitions)
+        app.router.add_get("/clips/get_latest_recognition", self.handle_get_latest_recognition)
         app.router.add_get("/clips/{clip_id}", self.handle_clip_file)
+        
 
         self.runner = web.AppRunner(app)
         await self.runner.setup()
@@ -290,6 +296,40 @@ class StreamThread(threading.Thread):
         finally:
             connection.close()
 
+    def query_recognitions_for_clip(self, clip_id: str):
+        connection = sqlite3.connect(self.storage_db_path, timeout=5.0)
+        try:
+            cursor = connection.cursor()
+            
+            cursor.execute(
+                "SELECT started_at FROM clips WHERE id = ?",
+                (clip_id,),
+            )
+
+            clip_row = cursor.fetchone()
+
+            if clip_row is None:
+                return None  # Clip not found
+            
+            cursor.execute(
+                "SELECT timestamp, name FROM recognitions WHERE clip_id = ? ORDER BY timestamp ASC",
+                (clip_id,),
+            )
+
+            recognitions = [
+                {
+                    "offset_seconds": (row[0] - clip_row[0]) / 1000.0,
+                    "name": row[1],
+                }
+                for row in cursor.fetchall()
+            ]
+
+            return {
+                "recognitions": recognitions,
+            }
+        finally:
+            connection.close()
+
     async def handle_clips_list(self, request: web.Request) -> web.Response:
         clips = await asyncio.to_thread(self.query_clips_list)
         return web.json_response(clips)
@@ -323,6 +363,30 @@ class StreamThread(threading.Thread):
             return web.json_response({"error": "Clip not found"}, status=404)
 
         return web.json_response(detections)
+    
+    async def handle_get_latest_recognition(self, request: web.Request) -> web.Response:
+        if self.face_mailbox is None:
+            return web.json_response({"error": "Face mailbox is not enabled."}, status=400)
+
+        latest_recognitions = await asyncio.to_thread(self.face_mailbox.get, timeout=0.1)
+
+        if latest_recognitions is None:
+            return web.json_response({"error": "No recognitions found."}, status=404)
+
+        return web.json_response(latest_recognitions)
+    
+    async def handle_clip_recognitions(self, request: web.Request) -> web.Response:
+        clip_id = str(request.match_info.get("clip_id"))
+
+        if not clip_id:
+            return web.json_response({"error": "Missing clip_id parameter"}, status=400)
+
+        recognitions = await asyncio.to_thread(self.query_recognitions_for_clip, clip_id)
+
+        if recognitions is None:
+            return web.json_response({"error": "Clip not found"}, status=404)
+
+        return web.json_response(recognitions)
     
     async def handle_clip_file(self, request: web.Request) -> web.StreamResponse:
         clip_id = str(request.match_info.get("clip_id"))
