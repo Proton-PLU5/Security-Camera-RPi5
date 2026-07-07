@@ -75,7 +75,7 @@ class CameraVideoTrack(VideoStreamTrack):
 
         frame = draw_detections(frame, detection)
 
-        video_frame = VideoFrame.from_ndarray(frame, format="rgb24")
+        video_frame = VideoFrame.from_ndarray(frame, format="bgr24")
         video_frame.pts = pts
         video_frame.time_base = time_base
         return video_frame
