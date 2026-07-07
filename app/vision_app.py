@@ -146,7 +146,7 @@ class VisionApp(App):
             self._handle_status(log)
         elif cmd == "metrics":
             from data.metrics import metrics
-            metrics.report()  # routes through logging -> TextualLogHandler -> log_message
+            log.write(metrics.report())
         elif cmd == "reset_data":
             # Deletes the database, clips, and resets metrics.
             from data.metrics import metrics
