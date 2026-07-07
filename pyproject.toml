@@ -15,6 +15,7 @@ dependencies = [
     "pyfiglet>=1.0.4",
     "rich>=15.0.0",
     "textual>=8.2.8",
+    "tomlkit>=0.15.0",
     "torch>=2.12.1",
     "ultralytics>=8.4.84",
 ]
