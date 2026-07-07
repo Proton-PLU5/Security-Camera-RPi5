@@ -6,14 +6,15 @@ from pathlib import Path
 class Config:
 
     def __init__(self, config_file):
-        self.configurations = self.load_configurations(config_file)
+        self.config_file = config_file
+        self.configurations = self.load_configurations()
 
-    def load_configurations(self, config_file):
-        document = tomlkit.parse(Path(config_file).read_text()) if Path(config_file).exists() else tomlkit.document()
+    def load_configurations(self):
+        document = tomlkit.parse(Path(self.config_file).read_text()) if Path(self.config_file).exists() else tomlkit.document()
         return document
 
-    def save_configurations(self, config_file):
-        with open(config_file, "w") as f:
+    def save_configurations(self):
+        with open(self.config_file, "w") as f:
             tomlkit.dump(self.configurations, f)
 
     def getString(self, key: str, default="") -> str:

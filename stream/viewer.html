@@ -105,9 +105,6 @@ ul#clip-list li.playing {
     background: #223;
 }
 
-/* double-buffered playback: both videos occupy the same box, only one
-   visible at a time - swapping visibility (not src) avoids the
-   black-frame/rebuffer flash a naive src-swap would cause */
 #clip-player {
     position: relative;
     width: 95vw;
@@ -133,7 +130,7 @@ ul#clip-list li.playing {
     left: 0;
     width: 100%;
     height: 100%;
-    pointer-events: none; /* clicks pass through to the video underneath */
+    pointer-events: none; 
 }
 </style>
 </head>
@@ -210,47 +207,33 @@ async function start() {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    // Wait until ICE gathering completes
     await new Promise(resolve => {
         if (pc.iceGatheringState === "complete") {
             resolve();
             return;
         }
-
         function check() {
             if (pc.iceGatheringState === "complete") {
-                pc.removeEventListener(
-                    "icegatheringstatechange",
-                    check
-                );
+                pc.removeEventListener("icegatheringstatechange", check);
                 resolve();
             }
         }
-
-        pc.addEventListener(
-            "icegatheringstatechange",
-            check
-        );
+        pc.addEventListener("icegatheringstatechange", check);
     });
 
     log("Sending offer...");
 
     const response = await fetch("/offer", {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(pc.localDescription)
     });
 
     if (!response.ok) {
-        throw new Error(
-            `HTTP ${response.status}: ${await response.text()}`
-        );
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
     }
 
     const answer = await response.json();
-
     await pc.setRemoteDescription(answer);
 
     log("Waiting for video...");
@@ -276,32 +259,28 @@ async function pollLatestRecognitions() {
             } else {
                 labelDiv.textContent = "Live Recognitions: None";
             }
-        } else if (res.status === 404) {
-            // Mailbox was empty or not found, clear label
+        } else if (res.status >= 400) {
+            // Mailbox empty (404), uninitialized (400), or server error (500)
             labelDiv.textContent = "";
         }
     } catch (err) {
-        // Silently ignore connection errors during polling to prevent console spam
+        // Silently ignore connection errors
     }
     setTimeout(pollLatestRecognitions, 1000);
 }
 
-// Start polling
 pollLatestRecognitions();
 
 
-// ============ everything below here is new: clip browsing/playback ============
-// (double-buffered, auto-advancing - see chat for how the swap-not-reload trick works)
+// ============ Clip Browsing ============
 
-let clipsAsc = [];        // chronological order (oldest -> newest), for sequencing
-let clipIdToIndex = {};   // id -> index in clipsAsc
+let clipsAsc = [];        
+let clipIdToIndex = {};   
 let currentIndex = -1;
 let activeIsA = true;
 
-// caches
 const detectionsCache = {};
 const recognitionsCache = {};
-let lastLogSecond = -1;
 
 async function fetchDetections(clipId) {
     if (!clipId || detectionsCache[clipId]) return;
@@ -332,105 +311,113 @@ let lastValidRecognition = null;
 let lastValidRecTimestamp = -1;
 
 function drawOverlay() {
+    // 1. Queue the next frame immediately so the loop NEVER dies if an error happens below
+    requestAnimationFrame(drawOverlay);
+
     const canvas = document.getElementById("clip-overlay");
+    if (!canvas) return;
+    
     const ctx = canvas.getContext("2d");
-    const { active } = getClipVideos();
-    const clip = clipsAsc[currentIndex];
-
-    // Clear the canvas every frame
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (!active || !clip || !active.videoWidth) {
-        requestAnimationFrame(drawOverlay);
-        return;
-    }
-
-    if (canvas.width !== active.videoWidth || canvas.height !== active.videoHeight) {
-        canvas.width = active.videoWidth;
-        canvas.height = active.videoHeight;
-    }
     
-    const t = active.currentTime;
+    // 2. Wrap all rendering logic in a try/catch block for absolute safety
+    try {
+        const { active } = getClipVideos();
+        const clip = clipsAsc[currentIndex];
 
-    // --- Process Detections Overlay ---
-    const cachedDet = detectionsCache[clip.id];
-    if (cachedDet) {
-        const scaleX = canvas.width / cachedDet.lowres_size[0];
-        const scaleY = canvas.height / cachedDet.lowres_size[1];
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        let closestTimestamp = null;
-        let minDiff = 0.2; 
-
-        for (const d of cachedDet.detections) {
-            const diff = Math.abs(d.offset_seconds - t);
-            if (diff < minDiff) {
-                minDiff = diff;
-                closestTimestamp = d.offset_seconds;
-            }
+        if (!active || !clip || !active.videoWidth) {
+            return; // Exit early, leaving the canvas blank, waits for next frame
         }
 
-        if (closestTimestamp !== null) {
-            lastValidShot = cachedDet.detections.filter(d => d.offset_seconds === closestTimestamp);
-            lastValidTimestamp = closestTimestamp;
-        } 
-        else if (Math.abs(lastValidTimestamp - t) > 0.5) {
-            lastValidShot = null;
-        }
-
-        if (lastValidShot) {
-            ctx.strokeStyle = "#00ff88";
-            ctx.lineWidth = 2;
-            ctx.fillStyle = "#00ff88";
-
-            for (const d of lastValidShot) {
-                const x = d.bbox_x * scaleX;
-                const y = d.bbox_y * scaleY;
-                const w = d.bbox_width * scaleX;
-                const h = d.bbox_height * scaleY;
-                ctx.strokeRect(x, y, w, h);
-                ctx.fillText(`${d.class_name} ${d.confidence.toFixed(2)}`, x, Math.max(y - 4, 10));
-            }
-        }
-    }
-    
-    // --- Process Recognitions Text ---
-    const recDiv = document.getElementById("clip-recognitions");
-    const cachedRec = recognitionsCache[clip.id];
-    
-    if (cachedRec && cachedRec.recognitions) {
-        let closestRecTimestamp = null;
-        let minRecDiff = 0.5; // Slightly more forgiving for text
-
-        for (const r of cachedRec.recognitions) {
-            const diff = Math.abs(r.offset_seconds - t);
-            if (diff < minRecDiff) {
-                minRecDiff = diff;
-                closestRecTimestamp = r.offset_seconds;
-            }
-        }
-
-        if (closestRecTimestamp !== null) {
-            lastValidRecognition = cachedRec.recognitions.filter(r => r.offset_seconds === closestRecTimestamp);
-            lastValidRecTimestamp = closestRecTimestamp;
-        } else if (Math.abs(lastValidRecTimestamp - t) > 1.0) {
-            lastValidRecognition = null; // Clear if we drifted too far
+        if (canvas.width !== active.videoWidth || canvas.height !== active.videoHeight) {
+            canvas.width = active.videoWidth;
+            canvas.height = active.videoHeight;
         }
         
-        if (lastValidRecognition && lastValidRecognition.length > 0) {
-            const names = lastValidRecognition.map(r => r.name).join(", ");
-            recDiv.textContent = "Recognized: " + names;
-        } else {
+        const t = active.currentTime;
+
+        // --- Process Detections Overlay ---
+        const cachedDet = detectionsCache[clip.id];
+        if (cachedDet && cachedDet.lowres_size) {
+            const scaleX = canvas.width / cachedDet.lowres_size[0];
+            const scaleY = canvas.height / cachedDet.lowres_size[1];
+
+            let closestTimestamp = null;
+            let minDiff = 0.2; 
+
+            for (const d of (cachedDet.detections || [])) {
+                const diff = Math.abs(d.offset_seconds - t);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestTimestamp = d.offset_seconds;
+                }
+            }
+
+            if (closestTimestamp !== null) {
+                lastValidShot = cachedDet.detections.filter(d => d.offset_seconds === closestTimestamp);
+                lastValidTimestamp = closestTimestamp;
+            } 
+            else if (Math.abs(lastValidTimestamp - t) > 0.5) {
+                lastValidShot = null;
+            }
+
+            if (lastValidShot) {
+                ctx.strokeStyle = "#00ff88";
+                ctx.lineWidth = 2;
+                ctx.fillStyle = "#00ff88";
+
+                for (const d of lastValidShot) {
+                    const x = d.bbox_x * scaleX;
+                    const y = d.bbox_y * scaleY;
+                    const w = d.bbox_width * scaleX;
+                    const h = d.bbox_height * scaleY;
+                    ctx.strokeRect(x, y, w, h);
+                    ctx.fillText(`${d.class_name} ${d.confidence.toFixed(2)}`, x, Math.max(y - 4, 10));
+                }
+            }
+        }
+        
+        // --- Process Recognitions Text ---
+        const recDiv = document.getElementById("clip-recognitions");
+        const cachedRec = recognitionsCache[clip.id];
+        
+        if (recDiv && cachedRec && cachedRec.recognitions) {
+            let closestRecTimestamp = null;
+            let minRecDiff = 0.5; 
+
+            for (const r of cachedRec.recognitions) {
+                const diff = Math.abs(r.offset_seconds - t);
+                if (diff < minRecDiff) {
+                    minRecDiff = diff;
+                    closestRecTimestamp = r.offset_seconds;
+                }
+            }
+
+            if (closestRecTimestamp !== null) {
+                lastValidRecognition = cachedRec.recognitions.filter(r => r.offset_seconds === closestRecTimestamp);
+                lastValidRecTimestamp = closestRecTimestamp;
+            } else if (Math.abs(lastValidRecTimestamp - t) > 1.0) {
+                lastValidRecognition = null; 
+            }
+            
+            if (lastValidRecognition && lastValidRecognition.length > 0) {
+                const names = lastValidRecognition.map(r => r.name).join(", ");
+                recDiv.textContent = "Recognized: " + names;
+            } else {
+                recDiv.textContent = "";
+            }
+        } else if (recDiv) {
             recDiv.textContent = "";
         }
-    } else {
-        recDiv.textContent = "";
+        
+    } catch (err) {
+        console.error("Non-fatal error in drawOverlay loop:", err);
     }
-
-    requestAnimationFrame(drawOverlay);
 }
 
+// Kick off the drawing loop
 requestAnimationFrame(drawOverlay);
-
 
 function getClipVideos() {
     return {
@@ -447,7 +434,7 @@ function preloadNextClip(index) {
     const { hidden } = getClipVideos();
     if (index >= 0 && index < clipsAsc.length) {
         hidden.src = clipUrl(clipsAsc[index].id);
-        hidden.load();  // starts buffering without playing
+        hidden.load(); 
     } else {
         hidden.removeAttribute("src");
         hidden.load();
@@ -482,7 +469,7 @@ function playClipAtIndex(index) {
 }
 
 function handleClipEnded(sourceIsA) {
-    if (sourceIsA !== activeIsA) return;  // stale event from the already-inactive video
+    if (sourceIsA !== activeIsA) return; 
     advanceToNextClip();
 }
 
@@ -499,9 +486,6 @@ function advanceToNextClip() {
     const { active, hidden } = getClipVideos();
     active.style.display = "block";
     hidden.style.display = "none";
-    // active's src was already set by the previous preloadNextClip() call,
-    // so this resumes an already-buffering video rather than issuing a
-    // fresh network request - that's what keeps the transition tight.
     active.play().catch(console.error);
     highlightPlayingClip(clipsAsc[nextIndex].id);
 
@@ -540,9 +524,9 @@ async function refreshClipList() {
     list.innerHTML = "<li>Loading...</li>";
     try {
         const res = await fetch("/clips");
-        const clipsDesc = await res.json();  // server returns newest-first
+        const clipsDesc = await res.json();  
 
-        clipsAsc = [...clipsDesc].reverse();  // oldest-first, for sequencing
+        clipsAsc = [...clipsDesc].reverse();  
         clipIdToIndex = {};
         clipsAsc.forEach((c, i) => { clipIdToIndex[c.id] = i; });
 

@@ -301,27 +301,28 @@ class StreamThread(threading.Thread):
         try:
             cursor = connection.cursor()
             
-            cursor.execute(
-                "SELECT started_at FROM clips WHERE id = ?",
-                (clip_id,),
-            )
-
+            cursor.execute("SELECT started_at FROM clips WHERE id = ?", (clip_id,))
             clip_row = cursor.fetchone()
 
             if clip_row is None:
                 return None  # Clip not found
             
-            cursor.execute(
-                "SELECT timestamp, name FROM recognitions WHERE clip_id = ? ORDER BY timestamp ASC",
-                (clip_id,),
-            )
+            try:
+                cursor.execute(
+                    "SELECT timestamp, name FROM recognitions WHERE clip_id = ? ORDER BY timestamp ASC",
+                    (clip_id,),
+                )
+                rows = cursor.fetchall()
+            except sqlite3.OperationalError:
+                # If the recognitions table doesn't exist yet, fallback to an empty list safely
+                rows = []
 
             recognitions = [
                 {
                     "offset_seconds": (row[0] - clip_row[0]) / 1000.0,
                     "name": row[1],
                 }
-                for row in cursor.fetchall()
+                for row in rows
             ]
 
             return {
@@ -368,7 +369,12 @@ class StreamThread(threading.Thread):
         if self.face_mailbox is None:
             return web.json_response({"error": "Face mailbox is not enabled."}, status=400)
 
-        latest_recognitions = await asyncio.to_thread(self.face_mailbox.get, timeout=0.1)
+        try:
+            # If the queue is empty, this throws an exception (e.g., queue.Empty)
+            latest_recognitions = await asyncio.to_thread(self.face_mailbox.get, timeout=0.1)
+        except Exception:
+            # Catching the exception prevents the 500 Internal Server Error crash
+            latest_recognitions = None
 
         if latest_recognitions is None:
             return web.json_response({"error": "No recognitions found."}, status=404)
