@@ -21,6 +21,7 @@ class FaceRecognition:
         self.tolerance = config.getFloat("face_recognition_tolerance", 0.6)
         self.known_face_encodings, self.known_face_names = self.load_known_face_encodings_and_names(self.face_encodings_dir)
         self.config = config
+        self.lock = threading.Lock()
 
     def load_known_face_encodings_and_names(self, encodings_dir):
         known_face_encodings = []
@@ -39,23 +40,27 @@ class FaceRecognition:
 
         return known_face_encodings, known_face_names
 
-    def add_known_face(self, image : np.ndarray, name: str):
+    def add_known_face(self, image: np.ndarray, name: str):
         face_encodings = face_recognition.face_encodings(image)
 
         if not face_encodings:
             logger.warning(f"No faces found in the image.")
             return
-        
+
         if len(face_encodings) > 1:
             logger.warning(
                 "%d faces detected - using the first one for '%s'",
                 len(face_encodings), name,
             )
 
-        self.known_face_encodings.append(face_encodings[0])
-        self.known_face_names.append(name)
+        with self.lock:
+            if name in self.known_face_names:
+                idx = self.known_face_names.index(name)
+                self.known_face_encodings[idx] = face_encodings[0]
+            else:
+                self.known_face_encodings.append(face_encodings[0])
+                self.known_face_names.append(name)
 
-        # Save the encoding to a pickle file
         with open(os.path.join(self.face_encodings_dir, f"{name}.pkl"), "wb") as f:
             pickle.dump(face_encodings[0], f)
 
@@ -65,15 +70,19 @@ class FaceRecognition:
         face_encodings = face_recognition.face_encodings(rgb_image, face_locations)
 
         recognised_faces = []
+        with self.lock:
+            known_encodings = list(self.known_face_encodings)
+            known_names = list(self.known_face_names)
+
         for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
             name = "Unknown"
 
-            if self.known_face_encodings:
-                distances = face_recognition.face_distance(self.known_face_encodings, face_encoding)
+            if known_encodings:
+                distances = face_recognition.face_distance(known_encodings, face_encoding)
                 best_index = int(np.argmin(distances))
-                
+
                 if distances[best_index] <= self.tolerance:
-                    name = self.known_face_names[best_index]
+                    name = known_names[best_index]
 
             recognised_faces.append({
                 "name": name,
@@ -93,11 +102,13 @@ class FaceRecognitionThread(threading.Thread):
 
     def __init__(self, queue: SnapshotAtomicQueue, 
                  face_recognition: FaceRecognition,
-                 storage_thread: StorageThread):
+                 storage_thread: StorageThread,
+                 face_mailbox: Optional[MailBox] = None):
         super().__init__(daemon=True, name="FaceRecognitionThread")
         self.queue = queue
         self.face_recognition = face_recognition
         self.storage_thread = storage_thread
+        self.face_mailbox = face_mailbox
         self.stop_event = threading.Event()
 
     def run(self):
@@ -122,6 +133,9 @@ class FaceRecognitionThread(threading.Thread):
                 timestamp=job.timestamp,
                 name=results[0]["name"] if results else "Unknown"
             )
+
+            if self.face_mailbox is not None:
+                self.face_mailbox.put(results)
 
     def stop(self):
         self.stop_event.set()

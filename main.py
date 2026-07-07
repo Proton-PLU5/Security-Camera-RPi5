@@ -37,6 +37,7 @@ def main():
     stream_buffer = FrameBuffer()
     face_queue = SnapshotAtomicQueue()
     face_recognition = None
+    face_mailbox = None
 
     capture_thread = CaptureThread(
         detection_mailbox=detection_mailbox, 
@@ -64,6 +65,7 @@ def main():
             queue=face_queue,
             face_recognition=face_recognition,
             storage_thread=storage_thread,
+            face_mailbox=face_mailbox
         )
         face_recognition_thread.start()
 
@@ -74,7 +76,8 @@ def main():
         config=config,
         host=config.getString("stream_host", "0.0.0.0"),
         port=config.getInt("stream_port", 8080),
-        lowres_size=(config.getInt("stream_width", 640), config.getInt("stream_height", 640))
+        lowres_size=(config.getInt("stream_width", 640), config.getInt("stream_height", 640)),
+        face_mailbox=face_mailbox
     )
     stream_thread.start()
 
