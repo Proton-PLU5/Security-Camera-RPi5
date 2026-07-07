@@ -9,20 +9,23 @@ from stream.webrtc_stream import StreamThread
 from ultralytics import YOLO
 from data.metrics import metrics
 from app.vision_app import VisionApp, TextualLogHandler
+from firmware.config import Config
 
 # NCNN THREAD LIMITING
 
 _orig_load_param = ncnn.Net.load_param # type: ignore
 
 def _load_param_with_thread_limit(self, path):
-    self.opt.num_threads = 2  # set before weights get packed, not after
+    self.opt.num_threads = 2  # set before weights get packed
     return _orig_load_param(self, path)
 
 ncnn.Net.load_param = _load_param_with_thread_limit # type: ignore
 
 def main():    
     model = YOLO("./capture/detection/yolo26s_ncnn_model")  # Load the YOLO model
-    data_base_path = "storage.db"
+
+    config = Config("config.toml")
+    data_base_path = config.getString("database_path", "storage.db")
 
     storage_thread = StorageThread(db_path=data_base_path)
     storage_thread.start()
@@ -35,8 +38,8 @@ def main():
     capture_thread = CaptureThread(
         detection_mailbox=detection_mailbox, 
         stream_buffer=stream_buffer, 
-        clip_dir="./clips", 
-        clip_length=10, 
+        clip_dir=config.getString("clip_directory", "./clips"), 
+        clip_length=config.getInt("clip_length", 10), 
         storage_thread=storage_thread)
     
     capture_thread.start()
@@ -51,7 +54,12 @@ def main():
     stream_thread = StreamThread(
         buffer=stream_buffer,
         storage_db_path=data_base_path,
-        detection_store=detection_store)
+        detection_store=detection_store,
+        config=config,
+        host=config.getString("stream_host", "0.0.0.0"),
+        port=config.getInt("stream_port", 8080),
+        lowres_size=(config.getInt("stream_width", 640), config.getInt("stream_height", 640))
+    )
     stream_thread.start()
 
     threads = {
@@ -69,7 +77,7 @@ def main():
     # Set handlers directly on the root logger rather than
     # logging.basicConfig() - basicConfig() silently no-ops if anything
     # (ultralytics, picamera2, etc.) already attached a handler earlier.
-    file_handler = logging.FileHandler("./terminal.log", mode="a", encoding="utf-8")
+    file_handler = logging.FileHandler(config.getString("log_file", "./terminal.log"), mode="a", encoding="utf-8")
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s [%(threadName)s] %(name)s: %(message)s")

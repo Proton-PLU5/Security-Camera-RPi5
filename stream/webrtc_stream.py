@@ -12,6 +12,7 @@ from capture.detection.detect import Detection, DetectionStore
 import sqlite3
 from stream.frame_buffer import FrameBuffer
 from pathlib import Path
+from firmware.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,13 @@ class CameraVideoTrack(VideoStreamTrack):
         return video_frame
     
 class StreamThread(threading.Thread):
-    def __init__(self, buffer: FrameBuffer, detection_store: DetectionStore, storage_db_path: str, host: str = '0.0.0.0', port: int = 8080, lowres_size: Tuple[int, int] = (640, 640)):
+    def __init__(self, buffer: FrameBuffer, 
+                 detection_store: DetectionStore, 
+                 storage_db_path: str, 
+                 config: Config,
+                 host: str = '0.0.0.0', 
+                 port: int = 8080, 
+                 lowres_size: Tuple[int, int] = (640, 640)):
         super().__init__(daemon=True, name="StreamThread")
         self.buffer = buffer
         self.detection_store = detection_store
@@ -87,6 +94,7 @@ class StreamThread(threading.Thread):
         self.host = host
         self.port = port
         self.lowres_size = lowres_size
+        self.config = config
 
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.runner: Optional[web.AppRunner] = None
