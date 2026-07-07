@@ -87,17 +87,44 @@ class Metrics:
             self.counters.clear()
 
     def report(self):
-        """Log a summary of all metrics."""
+        """Return a rich Table summarizing all metrics.
+
+        Requires the `rich` package. The caller can print the returned
+        `Table` with `Console().print(table)`.
+        """
+        try:
+            from rich.table import Table
+        except Exception as exc:  # pragma: no cover - dependency error
+            raise ImportError(
+                "rich is required to generate the metrics table. "
+                "Install with 'pip install rich'"
+            ) from exc
+
         snapshot = self.snapshot()
+        table = Table(title="Metrics")
+        table.add_column("Name", style="cyan", no_wrap=True)
+        table.add_column("Count", justify="right")
+        table.add_column("Avg (ms)", justify="right")
+        table.add_column("Recent Avg (ms)", justify="right")
+        table.add_column("P95 (ms)", justify="right")
+        table.add_column("Min (ms)", justify="right")
+        table.add_column("Max (ms)", justify="right")
+
         for name, data in snapshot.items():
             if "avg_ms" in data:
-                logging.info(
-                    f"{name}: count={data['count']}, avg={data['avg_ms']:.2f}ms, "
-                    f"recent_avg={data['recent_avg_ms']:.2f}ms, p95={data['p95_ms']:.2f}ms, "
-                    f"min={data['min_ms']:.2f}ms, max={data['max_ms']:.2f}ms"
+                table.add_row(
+                    name,
+                    str(data["count"]),
+                    f"{data['avg_ms']:.2f}",
+                    f"{data['recent_avg_ms']:.2f}",
+                    f"{data['p95_ms']:.2f}",
+                    f"{data['min_ms']:.2f}",
+                    f"{data['max_ms']:.2f}",
                 )
             else:
-                logging.info(f"{name}: count={data['count']}")
+                table.add_row(name, str(data["count"]), "-", "-", "-", "-", "-")
+
+        return table
 
 # Global metrics instance
 metrics = Metrics()
