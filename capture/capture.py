@@ -94,7 +94,7 @@ class CaptureThread(threading.Thread):
         self.stop_event.set()
 
     def check_and_update_clip(self):
-        has_detection = len(self.detection_store.latest().boxes[0].boxes) > 0 # type: ignore
+        has_detection = latest_detection is not None and len(latest_detection.boxes) > 0 # type: ignore
 
         if self.recording and self.latest_clip_id is not None:
             self.camera.stop_encoder()
