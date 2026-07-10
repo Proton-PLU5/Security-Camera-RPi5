@@ -21,7 +21,7 @@ class CaptureThread(threading.Thread):
                  storage_thread: StorageThread,
                  detection_store: DetectionStore,
                  video_size: tuple[int, int] = (1920, 1080),
-                 lowres_size: tuple[int, int] = (640, 640),
+                 lowres_size: tuple[int, int] = (960, 540),
                  clip_dir: str = "clips",
                  clip_length: int = 10,
                  ):
@@ -67,9 +67,7 @@ class CaptureThread(threading.Thread):
 
                     with metrics.time("convert"):
                         lowres_frame = cv2.cvtColor(lowres_frame, cv2.COLOR_YUV2RGB_I420) # type: ignore
-                        # Scale stream_frame down
-                        stream_frame = cv2.resize(stream_frame, (stream_frame.shape[1] // 2, stream_frame.shape[0] // 2), interpolation=cv2.INTER_LINEAR) # type: ignore
-
+                        
                     timestamp = request.get_metadata().get("SensorTimestamp")
                 finally:
                     with metrics.time("release"):
@@ -79,7 +77,7 @@ class CaptureThread(threading.Thread):
                     self.detection_mailbox.put((lowres_frame, stream_frame, timestamp, self.latest_clip_id))
 
                 with metrics.time("streambuf"):
-                    self.stream_buffer.put(stream_frame)
+                    self.stream_buffer.put(lowres_frame)
         except Exception as e:
             logger.error(f"Error in CaptureThread: {e}")
         finally:
