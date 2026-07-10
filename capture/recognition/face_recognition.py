@@ -7,6 +7,7 @@ import numpy as np
 import face_recognition
 from capture.mailbox import MailBox
 from capture.recognition.face_queue import SnapshotAtomicQueue
+from data.metrics import metrics
 from data.storage import StorageThread
 from firmware.config import Config
 import pickle
@@ -118,12 +119,13 @@ class FaceRecognitionThread(threading.Thread):
 
             if job is None:
                 continue  # No job available, continue the loop
-
-            try:
-                results = self.face_recognition.recognise(job.crop)
-            except Exception:
-                logger.error(f"Error during face recognition.")
-                continue
+            
+            with metrics.time("face_recognition"):
+                try:
+                    results = self.face_recognition.recognise(job.crop)
+                except Exception:
+                    logger.error(f"Error during face recognition.")
+                    continue
             
             if job.clip_id is None:
                 continue  # No active clip, skip storage

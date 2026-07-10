@@ -133,11 +133,12 @@ class DetectionThread(threading.Thread):
                     ):
                         any_person_detected = True
 
-                        crop, crop_origin = crop_person_for_face_recognition(
-                            frame=stream_frame,
-                            lowres_box_xyxy=(bbox_x, bbox_y, bbox_x + bbox_width, bbox_y + bbox_height),
-                            lowres_size=lowres_frame.shape[1::-1],
-                        )
+                        with metrics.time("face_crop"):
+                            crop, crop_origin = crop_person_for_face_recognition(
+                                frame=stream_frame,
+                                lowres_box_xyxy=(bbox_x, bbox_y, bbox_x + bbox_width, bbox_y + bbox_height),
+                                lowres_size=lowres_frame.shape[1::-1],
+                            )
 
                         if crop.size > 0:
                             self.face_queue.add(FaceCropJob(

@@ -12,6 +12,7 @@ from capture.detection.detect import Detection, DetectionStore
 import sqlite3
 from capture.mailbox import MailBox
 from capture.recognition.face_recognition import FaceRecognition
+from data.metrics import metrics
 from stream.frame_buffer import FrameBuffer
 from pathlib import Path
 from firmware.config import Config
@@ -63,22 +64,17 @@ class CameraVideoTrack(VideoStreamTrack):
         self.lowres_size = lowres_size
 
     async def recv(self) -> VideoFrame:
-        pts, time_base = await self.next_timestamp()
+        with metrics.time("stream_receive"):
+            pts, time_base = await self.next_timestamp()
 
-        frame = await asyncio.to_thread(self.buffer.get)
-        if frame is None:
-            frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
-        else:
-            frame = frame.copy()  # Copy the frame to avoid modifying the original
+            frame = await asyncio.to_thread(self.buffer.get)
+            if frame is None:
+                frame = np.zeros((1080, 1920, 3), dtype=np.uint8) 
 
-        detection = self.detection_store.latest()
-
-        frame = draw_detections(frame, detection)
-
-        video_frame = VideoFrame.from_ndarray(frame, format="bgr24")
-        video_frame.pts = pts
-        video_frame.time_base = time_base
-        return video_frame
+            video_frame = VideoFrame.from_ndarray(frame, format="bgr24")
+            video_frame.pts = pts
+            video_frame.time_base = time_base
+            return video_frame
     
 class StreamThread(threading.Thread):
     def __init__(self, buffer: FrameBuffer, 
@@ -125,13 +121,13 @@ class StreamThread(threading.Thread):
         app.router.add_post("/offer", self.handle_offer)
         app.router.add_post("/upload_face", self.handle_upload_face)
 
-        app.router.add_get("/clips", self.handle_clips_list)
         app.router.add_get("/clips/find", self.handle_clip_find)
         app.router.add_get("/clips/{clip_id}/detections", self.handle_clip_detections)
         app.router.add_get("/clips/{clip_id}/recognitions", self.handle_clip_recognitions)
         app.router.add_get("/clips/get_latest_recognition", self.handle_get_latest_recognition)
+        app.router.add_get("/clips/get_latest_detection", self.handle_get_latest_detection)
         app.router.add_get("/clips/{clip_id}", self.handle_clip_file)
-        
+        app.router.add_get("/clips", self.handle_clips_list)
 
         self.runner = web.AppRunner(app)
         await self.runner.setup()
@@ -142,6 +138,35 @@ class StreamThread(threading.Thread):
         # poll until stop_event is set
         while not self.stop_event.is_set():
             await asyncio.sleep(0.1)
+
+    async def handle_get_latest_detection(self, request: web.Request) -> web.WebSocketResponse:
+        websocket = web.WebSocketResponse()
+        await websocket.prepare(request)
+
+        try:
+            while not self.stop_event.is_set():
+                detection = await asyncio.to_thread(self.detection_store.latest)
+                if detection is not None:
+                    await websocket.send_json({
+                        "timestamp": detection.timestamp,
+                        "boxes": [
+                            {
+                                "class_name": result.names.get(int(box.cls.item()), str(int(box.cls.item()))),
+                                "confidence": float(box.conf.item()),
+                                "bbox_x": float(box.xyxy[0][0].item()),
+                                "bbox_y": float(box.xyxy[0][1].item()),
+                                "bbox_width": float(box.xyxy[0][2].item() - box.xyxy[0][0].item()),
+                                "bbox_height": float(box.xyxy[0][3].item() - box.xyxy[0][1].item())
+                            }
+                            for result in detection.boxes if result.boxes is not None
+                            for box in result.boxes
+                        ]
+                    })
+                await asyncio.sleep(0.05)
+        except Exception:
+            pass
+        finally:
+            return websocket
 
     async def handle_upload_face(self, request: web.Request) -> web.Response:
         if self.face_recognition is None:
