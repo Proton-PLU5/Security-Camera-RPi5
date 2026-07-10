@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import threading
-from time import time
+import time
 from typing import Any, Optional, Tuple
 
 import numpy as np
@@ -47,7 +47,7 @@ def crop_person_for_face_recognition(
 @dataclass
 class Detection:
     timestamp: int  # SensorTimestamp (ns) of the source frame
-    boxes: Any       # whatever your YOLO wrapper returns
+    boxes: list[dict] # YOLO detection results
     frame_size: Tuple[int, int]
 
 class DetectionStore:
@@ -86,44 +86,58 @@ class DetectionThread(threading.Thread):
                 continue
             
             lowres_frame, stream_frame, timestamp, clip_id = item
+
+            # Perform detection on the low-resolution frame
             results = self.model(lowres_frame, verbose=False)
+
+            # Yield the CPU after detection to allow other threads to run
+            time.sleep(0)
+
             for stage,ms in results[0].speed.items():
                 metrics.record(f"detection_{stage}", ms / 1000.0)  # convert to seconds
 
-            detected_at = time() * 1000
-                
-            self.detection_store.update(
-                Detection(timestamp=timestamp, boxes=results, frame_size=lowres_frame.shape[:2])
-            )
+            detected_at = time.time() * 1000
 
-            if clip_id is None:
-                continue  # No active clip, skip storage
-            
+            # Parse into plain Python primitives for storage and web API
+            parsed_boxes = []
             any_person_detected = False
-
+            names = getattr(self.model, 'names', {})
+            
             for result in results:
                 if result.boxes is None:
                     continue
 
                 for box in result.boxes:
                     class_id = int(box.cls.item())
-                    class_name = self.model.names[class_id]
+                    class_name = names.get(class_id, str(class_id))
                     confidence = float(box.conf.item())
 
                     x1, y1, x2, y2 = box.xyxy[0].tolist()
                     bbox_x, bbox_y = int(x1), int(y1)
                     bbox_width, bbox_height = int(x2 - x1), int(y2 - y1)
 
-                    self.storage_thread.insert_detection(
-                        clip_id=clip_id,
-                        timestamp=detected_at,
-                        class_name=class_name,
-                        confidence=confidence,
-                        bbox_x=bbox_x,
-                        bbox_y=bbox_y,
-                        bbox_width=bbox_width,
-                        bbox_height=bbox_height,
-                    )
+                    # Append to a dictionary
+                    parsed_boxes.append({
+                        "class_id": class_id,
+                        "class_name": class_name,
+                        "confidence": confidence,
+                        "bbox_x": bbox_x,
+                        "bbox_y": bbox_y,
+                        "bbox_width": bbox_width,
+                        "bbox_height": bbox_height
+                    })
+
+                    if clip_id is not None:
+                        self.storage_thread.insert_detection(
+                            clip_id=clip_id,
+                            timestamp=detected_at,
+                            class_name=class_name,
+                            confidence=confidence,
+                            bbox_x=bbox_x,
+                            bbox_y=bbox_y,
+                            bbox_width=bbox_width,
+                            bbox_height=bbox_height,
+                        )
 
                     # Only crop+queue for face recognition on person detections
                     # And only if a face mailbox is provided and is empty
@@ -148,6 +162,14 @@ class DetectionThread(threading.Thread):
                                 clip_id=clip_id
                             ))
             
+            self.detection_store.update(
+                Detection(
+                    timestamp=timestamp,
+                    boxes=parsed_boxes,
+                    frame_size=lowres_frame.shape[:2]
+                )
+            )
+
             if self.face_queue is not None and any_person_detected == True:
                 self.face_queue.lock()
 

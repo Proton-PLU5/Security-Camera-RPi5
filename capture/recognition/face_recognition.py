@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import threading
+import time
 from typing import Optional
 
 import cv2
@@ -123,6 +124,9 @@ class FaceRecognitionThread(threading.Thread):
             with metrics.time("face_recognition"):
                 try:
                     results = self.face_recognition.recognise(job.crop)
+                    
+                    # Yield the CPU after recognition to allow other threads to run
+                    time.sleep(0)
                 except Exception:
                     logger.error(f"Error during face recognition.")
                     continue

@@ -19,10 +19,11 @@ from firmware.config import Config
 
 logger = logging.getLogger(__name__)
 
+"""
+
+TODO: REMOVE
+
 def draw_detections(frame: np.ndarray, detection: Optional[Detection]) -> np.ndarray:
-    """
-    Draw the latest YOLO boxes onto a full-res frame.
-    """
     if detection is None:
         return frame
  
@@ -55,6 +56,7 @@ def draw_detections(frame: np.ndarray, detection: Optional[Detection]) -> np.nda
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, # type: ignore
             )
     return frame
+"""
 
 class CameraVideoTrack(VideoStreamTrack):
     def __init__(self, buffer: FrameBuffer, detection_store: DetectionStore, lowres_size: Tuple[int, int] = (640, 640)):
@@ -140,6 +142,16 @@ class StreamThread(threading.Thread):
             await asyncio.sleep(0.1)
 
     async def handle_get_latest_detection(self, request: web.Request) -> web.WebSocketResponse:
+        """
+            WebSocket endpoint to stream the latest YOLO detection results in real-time.
+            Boxes is a list of dicts, each containing the following keys:
+            - class_name: str
+            - confidence: float
+            - bbox_x: int
+            - bbox_y: int
+            - bbox_width: int
+            - bbox_height: int
+        """
         websocket = web.WebSocketResponse()
         await websocket.prepare(request)
 
@@ -147,20 +159,11 @@ class StreamThread(threading.Thread):
             while not self.stop_event.is_set():
                 detection = await asyncio.to_thread(self.detection_store.latest)
                 if detection is not None:
+                    # Because detection.boxes is already a clean list of primitive dicts,
+                    # we can directly pass it straight into the JSON payload!
                     await websocket.send_json({
                         "timestamp": detection.timestamp,
-                        "boxes": [
-                            {
-                                "class_name": result.names.get(int(box.cls.item()), str(int(box.cls.item()))),
-                                "confidence": float(box.conf.item()),
-                                "bbox_x": float(box.xyxy[0][0].item()),
-                                "bbox_y": float(box.xyxy[0][1].item()),
-                                "bbox_width": float(box.xyxy[0][2].item() - box.xyxy[0][0].item()),
-                                "bbox_height": float(box.xyxy[0][3].item() - box.xyxy[0][1].item())
-                            }
-                            for result in detection.boxes if result.boxes is not None
-                            for box in result.boxes
-                        ]
+                        "boxes": detection.boxes
                     })
                 await asyncio.sleep(0.05)
         except Exception:
