@@ -44,7 +44,9 @@ def main():
         stream_buffer=stream_buffer, 
         clip_dir=config.getString("clip_directory", "./clips"), 
         clip_length=config.getInt("clip_length", 10), 
-        storage_thread=storage_thread)
+        storage_thread=storage_thread,
+        detection_store=detection_store
+    )
     
     capture_thread.start()
 

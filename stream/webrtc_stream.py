@@ -177,7 +177,17 @@ class StreamThread(threading.Thread):
         
         return web.json_response({"message": f"Face for '{name}' added successfully."})
             
+    """
+        WebRTC signaling endpoint (/offer)
 
+        Accepts a client's SDP offer, spins up a new RTCPeerConnection,
+        and attaches the live camera feed with YOLO detections drawn on it,
+        and returns the local SDP answer to complete the WebRTC handshake.
+
+        TODO:
+        Might want to remove the automatic attachment of detections, to reduce
+        CPU load on the server, and let the client draw the detections instead.
+    """
     async def handle_offer(self, request: web.Request) -> web.Response:
         params = await request.json()
         offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
