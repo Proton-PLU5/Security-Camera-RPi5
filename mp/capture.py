@@ -93,7 +93,8 @@ class CaptureProcess(Process):
         logger.info("Starting CaptureProcess")
         self.camera.start()
         self.current_clip_start = time.time() * 1000
-
+        self.start_clip()
+        
         try:
             while not self.stop_event.is_set():
                 # Check if the current clip has exceeded the specified length, and if so, start a new clip.
@@ -147,6 +148,8 @@ class CaptureProcess(Process):
         if self.current_clip_id is None:
             return  # No clip to end
         
+        self.camera.stop_encoder()  # Stop the encoder before ending the clip
+
         end_time = time.time() * 1000
         end_clip_task = self.storage_task_factory.end_clip(clip_id=self.current_clip_id, ended_at=end_time)
         self.storage_task_queue.put(end_clip_task)
