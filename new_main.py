@@ -1,8 +1,10 @@
+import logging
 from multiprocessing import Event, Queue
-
 from mp.capture import CaptureProcess, CaptureBuffer
 from mp.storage import StorageProcess
 from mp.stream import StreamProcess
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(processName)s %(levelname)s %(message)s")
 
 def main():
     storage_task_queue = Queue()
@@ -31,9 +33,16 @@ def main():
     capture_process.start()
     stream_process.start()
 
-    while True:
-        print(capture_process.is_alive(), storage_process.is_alive(), stream_process.is_alive())
+    import time
+    try:
+        while True:
+            print(capture_process.is_alive(), storage_process.is_alive(), stream_process.is_alive())
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
 
+    stop_event.set()
+    
     stop_event.set()  # Signal the storage process to stop
     storage_process.join()  # Wait for the storage process to finish
     capture_process.join()  # Wait for the capture process to finish
