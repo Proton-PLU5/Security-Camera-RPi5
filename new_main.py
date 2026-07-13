@@ -17,7 +17,8 @@ def main():
         db_path='storage.db',
         capture_buffer=capture_buffer,
         lowres_size=lowres_size,
-        video_size=video_size
+        video_size=video_size,
+        clip_dir='./clips',
     )
 
     storage_process = StorageProcess(storage_task_queue, stop_event, db_path='storage.db')
