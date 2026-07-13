@@ -98,11 +98,13 @@ class CaptureProcess(Process):
             self.start_clip()
             while not self.stop_event.is_set():
                 # Check if the current clip has exceeded the specified length, and if so, start a new clip.
+                logger.debug("Checking if clip length exceeded")
                 if (time.time() * 1000) - self.current_clip_start > (self.clip_length * 1000):
                     self.current_clip_start = time.time() * 1000
                     self.end_clip()
                     self.start_clip()
 
+                logger.debug("Capturing frame")
                 request = self.camera.capture_request()
                 try:
                     # Process the captured frame
@@ -112,6 +114,7 @@ class CaptureProcess(Process):
                 finally:
                     request.release()
 
+                logger.debug("Writing frame to capture buffer")
                 # Write the low-resolution frame to the shared capture buffer
                 self.capture_buffer.write(lowres_frame)
         except Exception as e:
