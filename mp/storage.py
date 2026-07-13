@@ -2,9 +2,8 @@ import heapq
 from multiprocessing import Event, Process, Queue
 import sqlite3
 from dataclasses import dataclass
-from time import time
+import time
 import logging
-import uuid
 
 @dataclass
 class Task:
