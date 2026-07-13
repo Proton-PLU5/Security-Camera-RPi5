@@ -109,4 +109,4 @@ class StreamProcess(Process):
         return web.json_response({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type})
 
     async def index(self, request: web.Request) -> web.FileResponse:
-        return web.FileResponse("stream/lite_viewer.html")
+        return web.FileResponse("mp/lite_viewer.html")
