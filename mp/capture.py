@@ -93,9 +93,9 @@ class CaptureProcess(Process):
         logger.info("Starting CaptureProcess")
         self.camera.start()
         self.current_clip_start = time.time() * 1000
-        self.start_clip()
         
         try:
+            self.start_clip()
             while not self.stop_event.is_set():
                 # Check if the current clip has exceeded the specified length, and if so, start a new clip.
                 if (time.time() * 1000) - self.current_clip_start > (self.clip_length * 1000):
@@ -115,7 +115,7 @@ class CaptureProcess(Process):
                 # Write the low-resolution frame to the shared capture buffer
                 self.capture_buffer.write(lowres_frame)
         except Exception as e:
-            logger.error(f"Error in CaptureProcess: {e}")
+            logger.error(f"Error in CaptureProcess: {e}", exc_info=True)
         finally:
             self.end_clip()  # Ensure the current clip is ended if the process is stopping
             self.camera.stop_encoder()
