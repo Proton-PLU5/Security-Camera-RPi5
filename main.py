@@ -13,17 +13,19 @@ from data.metrics import metrics
 from app.vision_app import VisionApp, TextualLogHandler
 from firmware.config import Config
 
-# NCNN THREAD LIMITING
+def configure_ncnn():
+    # NCNN THREAD LIMITING
+    _orig_load_param = ncnn.Net.load_param # type: ignore
 
-_orig_load_param = ncnn.Net.load_param # type: ignore
+    def _load_param_with_thread_limit(self, path):
+        self.opt.num_threads = 1  # set before weights get packed
+        return _orig_load_param(self, path)
 
-def _load_param_with_thread_limit(self, path):
-    self.opt.num_threads = 1  # set before weights get packed
-    return _orig_load_param(self, path)
-
-ncnn.Net.load_param = _load_param_with_thread_limit # type: ignore
+    ncnn.Net.load_param = _load_param_with_thread_limit # type: ignore
 
 def main():    
+    configure_ncnn()
+    
     model = YOLO("./capture/detection/yolo26s_ncnn_model")  # Load the YOLO model
 
     config = Config("config.toml")
