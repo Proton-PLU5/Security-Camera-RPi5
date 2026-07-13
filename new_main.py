@@ -31,9 +31,7 @@ def main():
     stream_process.start()
 
     while True:
-        user_input = input("Type exit to stop: ")
-        if user_input == "exit":
-            break
+        print(capture_process.is_alive(), storage_process.is_alive(), stream_process.is_alive())
 
     stop_event.set()  # Signal the storage process to stop
     storage_process.join()  # Wait for the storage process to finish

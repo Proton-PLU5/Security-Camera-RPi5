@@ -1,7 +1,7 @@
 import logging
 from multiprocessing import Event, Process, Queue, shared_memory, Value
 import os
-from time import time
+import time
 import uuid
 import numpy as np
 from mp.storage import Task, TaskFactory
