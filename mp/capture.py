@@ -34,6 +34,18 @@ class CaptureBuffer:
         buf = self.shared_buffer_a.buf if active == 0 else self.shared_buffer_b.buf
         return np.ndarray(self.shape, dtype=self.dtype, buffer=buf).copy()
     
+    def write(self, frame: np.ndarray):
+        # write to the inactive buffer, then flip
+        active = self.active.value
+        target_buf = self.shared_buffer_b.buf if active == 0 else self.shared_buffer_a.buf
+        target = np.ndarray(self.shape, dtype=self.dtype, buffer=target_buf)
+        target[:] = frame
+
+        with self.active.get_lock():
+            self.active.value = 1 - self.active.value
+        with self.version.get_lock():
+            self.version.value += 1
+    
     def close(self):
         self.shared_buffer_a.close()
         self.shared_buffer_a.unlink()
@@ -99,15 +111,8 @@ class CaptureProcess(Process):
                 finally:
                     request.release()
 
-                target_buffer = self.capture_buffer.get()
-                target_buffer[:] = lowres_frame  # Copy the low-res frame to the shared buffer
-
-                # Update the active buffer and version counter to signal that a new frame is available
-                with self.capture_buffer.active.get_lock():
-                    self.capture_buffer.active.value = 1 - self.capture_buffer.active.value
-
-                with self.capture_buffer.version.get_lock():
-                    self.capture_buffer.version.value += 1
+                # Write the low-resolution frame to the shared capture buffer
+                self.capture_buffer.write(lowres_frame)
         except Exception as e:
             logger.error(f"Error in CaptureProcess: {e}")
         finally:
