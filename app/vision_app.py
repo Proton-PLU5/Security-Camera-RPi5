@@ -147,17 +147,6 @@ class VisionApp(App):
         elif cmd == "metrics":
             from data.metrics import metrics
             log.write(metrics.report())
-        elif cmd == "reset_data":
-            # Deletes the database, clips, and resets metrics.
-            from data.metrics import metrics
-            import os
-            import shutil
-            if os.path.exists("storage.db"):
-                os.remove("storage.db")
-            if os.path.exists("clips"):
-                shutil.rmtree("clips")
-            metrics.reset()
-            log.write(Text("Data reset: storage.db deleted, clips removed, metrics reset.", style="red"))
         elif cmd == "help":
             self._handle_help(log)
         else:
@@ -183,7 +172,6 @@ class VisionApp(App):
         table.add_row("metrics", "Display runtime metrics")
         table.add_row("help", "Show this help menu")
         table.add_row("exit", "Shutdown application")
-        table.add_row("reset_data", "Delete storage.db, clips, and reset metrics")
         log.write(table)
 
     # -----------------------------
