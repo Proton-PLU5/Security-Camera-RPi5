@@ -18,18 +18,15 @@ class CameraVideoTrack(VideoStreamTrack):
         self.lowres_size = lowres_size
 
     async def recv(self) -> VideoFrame:
-        with metrics.time("stream_receive"):
-            frame = self.buffer.get()
+        frame = self.buffer.get()
 
-            if frame is None:
-                return await self.recv()
+        if frame is None:
+            return await self.recv()
 
-            # Convert the frame to a VideoFrame
-            video_frame = VideoFrame.from_ndarray(frame, format='bgr24')
-            video_frame.pts = None  # Let aiortc handle the timestamp
-            video_frame.time_base = None  # Let aiortc handle the time base
+        video_frame = VideoFrame.from_ndarray(frame, format='rgb24')
+        video_frame.pts, video_frame.time_base = await self.next_timestamp()
 
-            return video_frame
+        return video_frame
 
 class StreamProcess(Process):
     def __init__(self, 
