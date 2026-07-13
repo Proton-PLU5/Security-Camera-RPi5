@@ -1,4 +1,3 @@
-import torch
 import ultralytics
 
 if __name__ == "__main__":
@@ -8,7 +7,7 @@ if __name__ == "__main__":
         format="ncnn", 
         half=True,           # Use FP16 for smaller model size and faster inference
         device="cpu",        # CPU is sufficient for conversion
-        imgsz=640,           # Input image size (default)
+        imgsz=(960, 540),           # Input image size (default)
         simplify=True,        # Simplify the model architecture
     )
     print("NCNN model exported successfully!")

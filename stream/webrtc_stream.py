@@ -59,7 +59,7 @@ def draw_detections(frame: np.ndarray, detection: Optional[Detection]) -> np.nda
 """
 
 class CameraVideoTrack(VideoStreamTrack):
-    def __init__(self, buffer: FrameBuffer, detection_store: DetectionStore, lowres_size: Tuple[int, int] = (640, 640)):
+    def __init__(self, buffer: FrameBuffer, detection_store: DetectionStore, lowres_size: Tuple[int, int] = (960, 540)):
         super().__init__()
         self.buffer = buffer
         self.detection_store = detection_store
@@ -86,7 +86,7 @@ class StreamThread(threading.Thread):
                  face_recognition: Optional[FaceRecognition] = None,
                  host: str = '0.0.0.0', 
                  port: int = 8080, 
-                 lowres_size: Tuple[int, int] = (640, 640),
+                 lowres_size: Tuple[int, int] = (960, 540),
                  face_mailbox: Optional[MailBox] = None):
         super().__init__(daemon=True, name="StreamThread")
         self.buffer = buffer
