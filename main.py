@@ -25,21 +25,20 @@ def configure_ncnn():
 
 def main():    
     configure_ncnn()
-    
+
     model = YOLO("./capture/detection/yolo26s_ncnn_model")  # Load the YOLO model
 
     config = Config("config.toml")
     data_base_path = config.getString("database_path", "storage.db")
-
-    storage_thread = StorageThread(db_path=data_base_path)
-    storage_thread.start()
-
     detection_mailbox = MailBox()
     detection_store = DetectionStore()
     stream_buffer = FrameBuffer()
     face_queue = SnapshotAtomicQueue()
     face_recognition = None
     face_mailbox = None
+
+    storage_thread = StorageThread(db_path=data_base_path)
+    storage_thread.start()
 
     capture_thread = CaptureThread(
         detection_mailbox=detection_mailbox, 
