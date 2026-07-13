@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Stream</title>
+<style>
+  html, body { margin: 0; background: #000; height: 100%; }
+  video { width: 100%; height: 100%; object-fit: contain; display: block; }
+  #status { position: fixed; top: 8px; left: 8px; color: #0f0; font: 12px monospace; }
+</style>
+</head>
+<body>
+<video id="video" autoplay playsinline muted></video>
+<div id="status">connecting...</div>
+
+<script>
+const statusEl = document.getElementById("status");
+const videoEl = document.getElementById("video");
+
+async function start() {
+  const pc = new RTCPeerConnection();
+
+  pc.ontrack = (event) => {
+    videoEl.srcObject = event.streams[0];
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    statusEl.textContent = pc.iceConnectionState;
+  };
+
+  pc.addTransceiver("video", { direction: "recvonly" });
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  // wait for ICE gathering to complete before sending offer
+  await new Promise((resolve) => {
+    if (pc.iceGatheringState === "complete") return resolve();
+    pc.onicegatheringstatechange = () => {
+      if (pc.iceGatheringState === "complete") resolve();
+    };
+  });
+
+  const res = await fetch("/offer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sdp: pc.localDescription.sdp,
+      type: pc.localDescription.type,
+    }),
+  });
+
+  const answer = await res.json();
+  await pc.setRemoteDescription(answer);
+}
+
+start().catch((err) => {
+  statusEl.textContent = "error: " + err.message;
+  console.error(err);
+});
+</script>
+</body>
+</html>

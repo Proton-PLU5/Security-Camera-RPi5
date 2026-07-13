@@ -1,0 +1,36 @@
+from multiprocessing import Event, Queue
+
+from mp.capture import CaptureProcess, CaptureBuffer
+from mp.storage import StorageProcess
+
+def main():
+    storage_task_queue = Queue()
+    stop_event = Event()
+    lowres_size = (960, 540)  # Width, Height
+    video_size = (1920, 1080)  # Width, Height
+    capture_buffer = CaptureBuffer(shape = (lowres_size[1], lowres_size[0], 3)) # Height, Width, Channels
+
+    capture_process = CaptureProcess(
+        storage_task_queue=storage_task_queue,
+        stop_event=stop_event,
+        db_path='storage.db',
+        capture_buffer=capture_buffer,
+        lowres_size=lowres_size,
+        video_size=video_size
+    )
+
+    storage_process = StorageProcess(storage_task_queue, stop_event, db_path='storage.db')
+
+    storage_process.start()
+    capture_process.start()
+
+    while True:
+        user_input = input("Type exit to stop: ")
+        if user_input == "exit":
+            break
+
+    stop_event.set()  # Signal the storage process to stop
+    storage_process.join()  # Wait for the storage process to finish
+    capture_process.join()  # Wait for the capture process to finish
+if __name__ == "__main__":
+    main()
