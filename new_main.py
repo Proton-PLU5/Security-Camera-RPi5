@@ -2,6 +2,7 @@ from multiprocessing import Event, Queue
 
 from mp.capture import CaptureProcess, CaptureBuffer
 from mp.storage import StorageProcess
+from mp.stream import StreamProcess
 
 def main():
     storage_task_queue = Queue()
@@ -20,9 +21,14 @@ def main():
     )
 
     storage_process = StorageProcess(storage_task_queue, stop_event, db_path='storage.db')
+    stream_process = StreamProcess(
+        buffer=capture_buffer,
+        storage_db_path='storage.db',
+        stop_event=stop_event)
 
     storage_process.start()
     capture_process.start()
+    stream_process.start()
 
     while True:
         user_input = input("Type exit to stop: ")
@@ -32,5 +38,6 @@ def main():
     stop_event.set()  # Signal the storage process to stop
     storage_process.join()  # Wait for the storage process to finish
     capture_process.join()  # Wait for the capture process to finish
+    stream_process.join()  # Wait for the stream process to finish
 if __name__ == "__main__":
     main()
