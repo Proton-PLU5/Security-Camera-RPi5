@@ -47,5 +47,7 @@ def main():
     storage_process.join()  # Wait for the storage process to finish
     capture_process.join()  # Wait for the capture process to finish
     stream_process.join()  # Wait for the stream process to finish
+    capture_buffer.close()  # Close the shared buffer
+    
 if __name__ == "__main__":
     main()
