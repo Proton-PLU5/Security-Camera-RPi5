@@ -66,7 +66,6 @@ class CaptureProcess(Process):
                  ):
         super().__init__(daemon=True)
         self.storage_task_queue = storage_task_queue
-        self.storage_task_factory = None
         self.stop_event = stop_event
         self.db_path = db_path
         self.clip_dir = clip_dir
@@ -82,8 +81,8 @@ class CaptureProcess(Process):
     def run(self):
         # Setup
         self.camera = Picamera2()
-        self.storage_task_factory = TaskFactory()
-        
+        self.storage_task_factory : TaskFactory = TaskFactory()
+
         # Configure picamera2
         video_config = self.camera.create_video_configuration(
             main={"size": self.video_size, "format": "RGB888"},
@@ -105,13 +104,12 @@ class CaptureProcess(Process):
             self.start_clip()
             while not self.stop_event.is_set():
                 # Check if the current clip has exceeded the specified length, and if so, start a new clip.
-                logger.info("Checking if clip length exceeded")
+                
                 if (time.time() * 1000) - self.current_clip_start > (self.clip_length * 1000):
                     self.current_clip_start = time.time() * 1000
                     self.end_clip()
                     self.start_clip()
 
-                logger.info("Capturing frame")
                 request = self.camera.capture_request()
                 try:
                     # Process the captured frame
@@ -121,7 +119,6 @@ class CaptureProcess(Process):
                 finally:
                     request.release()
 
-                logger.info("Writing frame to capture buffer")
                 # Write the low-resolution frame to the shared capture buffer
                 self.capture_buffer.write(lowres_frame)
         except Exception as e:
