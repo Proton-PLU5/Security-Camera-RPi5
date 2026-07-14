@@ -66,18 +66,28 @@ class CaptureProcess(Process):
                  ):
         super().__init__(daemon=True)
         self.storage_task_queue = storage_task_queue
-        self.storage_task_factory = TaskFactory()
+        self.storage_task_factory = None
         self.stop_event = stop_event
         self.db_path = db_path
         self.clip_dir = clip_dir
         self.clip_length = clip_length
         self.capture_buffer = capture_buffer
-        self.camera = Picamera2()
+        self.video_size = video_size
+        self.lowres_size = lowres_size
 
+        
+        self.current_clip_start = 0.0
+        self.current_clip_id = None
+
+    def run(self):
+        # Setup
+        self.camera = Picamera2()
+        self.storage_task_factory = TaskFactory()
+        
         # Configure picamera2
         video_config = self.camera.create_video_configuration(
-            main={"size": video_size, "format": "RGB888"},
-            lores={"size": lowres_size, "format": "RGB888"},
+            main={"size": self.video_size, "format": "RGB888"},
+            lores={"size": self.lowres_size, "format": "RGB888"},
             encode="main",
         )
 
@@ -86,12 +96,9 @@ class CaptureProcess(Process):
         # Limiting the FPS to reduce storage size.
         self.encoder = H264Encoder(bitrate=10000000, framerate=24)
 
-        self.current_clip_start = 0.0
-        self.current_clip_id = None
-
-    def run(self):
         logger.info("Starting CaptureProcess")
         self.camera.start()
+        logger.info("Camera started")
         self.current_clip_start = time.time() * 1000
         
         try:
