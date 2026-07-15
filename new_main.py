@@ -55,41 +55,33 @@ def main():
         "storage": storage_process
     }
 
-    """
-        config = Config("config.toml")
+    config = Config("config.toml")
 
-        app = VisionApp(
-            processes=processes
-        )
+    app = VisionApp(
+        processes=processes
+    )
 
-        # Route stdlib logging into the app's log widget instead of real
-        # stdout/stderr (which the full-screen app owns and would corrupt).
-        # Set handlers directly on the root logger rather than
-        # logging.basicConfig() - basicConfig() silently no-ops if anything
-        # (ultralytics, picamera2, etc.) already attached a handler earlier.
-        file_handler = logging.FileHandler(config.getString("log_file", "./terminal.log"), mode="a", encoding="utf-8")
-        file_handler.setLevel(logging.INFO)
-        file_handler.setFormatter(
-            logging.Formatter("%(asctime)s [%(threadName)s] %(name)s: %(message)s")
-        )
-    
-        tui_handler = TextualLogHandler(app)
-        tui_handler.setLevel(logging.INFO)
-        tui_handler.setFormatter(logging.Formatter("[%(threadName)s] %(name)s: %(message)s"))
-    
-        root = logging.getLogger()
-        root.setLevel(logging.INFO)
-        root.handlers = [file_handler, tui_handler]
-    """
+    # Route stdlib logging into the app's log widget instead of real
+    # stdout/stderr (which the full-screen app owns and would corrupt).
+    # Set handlers directly on the root logger rather than
+    # logging.basicConfig() - basicConfig() silently no-ops if anything
+    # (ultralytics, picamera2, etc.) already attached a handler earlier.
+    file_handler = logging.FileHandler(config.getString("log_file", "./terminal.log"), mode="a", encoding="utf-8")
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(threadName)s] %(name)s: %(message)s")
+    )
+
+    tui_handler = TextualLogHandler(app)
+    tui_handler.setLevel(logging.INFO)
+    tui_handler.setFormatter(logging.Formatter("[%(threadName)s] %(name)s: %(message)s"))
+
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.handlers = [file_handler, tui_handler]
+  
     try:
-        while True:
-            # Check if any process has exited unexpectedly
-            for name, process in processes.items():
-                if not process.is_alive():
-                    logging.error(f"{name} process has exited unexpectedly.")
-                    raise RuntimeError(f"{name} process has exited unexpectedly.")
-    except KeyboardInterrupt:
-        logging.info("KeyboardInterrupt received. Stopping all processes...")
+        app.run()
     finally:
         stop_event.set()  # Signal the storage process to stop
         storage_process.join()  # Wait for the storage process to finish
