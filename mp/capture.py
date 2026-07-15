@@ -63,7 +63,7 @@ class CaptureProcess(Process):
                  clip_dir: str = 'clips',
                  clip_length: int = 10,
                  video_size: tuple[int, int] = (1920, 1080),
-                 lowres_size: tuple[int, int] = (960, 540),
+                 lowres_size: tuple[int, int] = (960, 544),
                  ):
         super().__init__(daemon=True)
         self.storage_task_queue = storage_task_queue

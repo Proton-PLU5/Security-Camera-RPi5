@@ -77,7 +77,7 @@ class DetectProcess(Process):
         _orig_load_param = ncnn.Net.load_param # type: ignore
 
         def _load_param_with_thread_limit(self, path):
-            self.opt.num_threads = 1  # set before weights get packed
+            self.opt.num_threads = 2  # set before weights get packed
             return _orig_load_param(self, path)
 
         ncnn.Net.load_param = _load_param_with_thread_limit # type: ignore
