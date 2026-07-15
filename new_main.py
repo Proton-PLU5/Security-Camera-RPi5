@@ -1,5 +1,5 @@
 import logging
-from multiprocessing import Event, Lock, Queue, Manager
+from multiprocessing import Event, Lock, Queue, Manager, set_start_method
 from firmware.config import Config
 from mp.capture import CaptureProcess, CaptureBuffer
 from mp.storage import StorageProcess
@@ -8,6 +8,7 @@ from mp.detect import DetectProcess, DetectionBuffer
 from mp.vision_app import TextualLogHandler, VisionApp
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(processName)s %(levelname)s %(message)s")
+set_start_method("spawn", force=True)  # Use 'spawn' to avoid issues with OpenCV and PyTorch in child processes
 
 def main():
     storage_task_queue = Queue()
