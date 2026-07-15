@@ -8,14 +8,14 @@ def test_inference():
     out = []
 
     with ncnn.Net() as net:
-        net.load_param("capture\detection\yolo26s_ncnn_model\model.ncnn.param")
-        net.load_model("capture\detection\yolo26s_ncnn_model\model.ncnn.bin")
+        net.load_param("capture/detection/yolo26s_ncnn_model/model.ncnn.param")
+        net.load_model("capture/detection/yolo26s_ncnn_model/model.ncnn.bin")
 
         with net.create_extractor() as ex:
-            ex.input("in0", ncnn.Mat(in0.numpy(), batch_index=0).clone())
+            ex.input("in0", ncnn.Mat(in0.squeeze(0).numpy()).clone())
 
             _, out0 = ex.extract("out0")
-            out.append(torch.from_numpy(out0.numpy(batch_index=0)))
+            out.append(torch.from_numpy(np.array(out0)).unsqueeze(0))
 
     if len(out) == 1:
         return out[0]

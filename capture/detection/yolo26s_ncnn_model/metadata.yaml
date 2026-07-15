@@ -1,7 +1,7 @@
 description: Ultralytics YOLO26s model trained on /home/lq/codes/ultralytics/ultralytics/cfg/datasets/coco.yaml
 author: Ultralytics
-date: '2026-07-15T14:11:31.138224'
-version: 8.3.180
+date: '2026-07-15T14:13:14.887918'
+version: 8.4.84
 license: AGPL-3.0 License (https://ultralytics.com/license)
 docs: https://docs.ultralytics.com
 stride: 32
@@ -93,5 +93,6 @@ names:
   79: toothbrush
 args:
   batch: 1
-  half: true
+  quantize: 16
 channels: 3
+end2end: false
