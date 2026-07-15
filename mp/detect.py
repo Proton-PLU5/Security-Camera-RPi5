@@ -56,7 +56,7 @@ class DetectProcess(Process):
     def __init__(self, 
                  stop_event : Event, # type: ignore
                  capture_buffer : CaptureBuffer,
-                 storage_task_queue : Queue[Task],
+                 storage_task_queue : "Queue[Task]",
                  detection_buffer : DetectionBuffer,
                  ):
         super().__init__(daemon=True)
