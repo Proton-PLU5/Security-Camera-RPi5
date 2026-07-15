@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Optional, Tuple
 from aiohttp import web
+import aiohttp
 from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription, MediaStreamTrack, VideoStreamTrack
 from multiprocessing import Process, Queue, Event
 from data.metrics import metrics
@@ -10,6 +11,7 @@ from av import VideoFrame
 import numpy as np
 
 from mp.capture import CaptureBuffer
+from mp.detect import DetectionBuffer
 
 class CameraVideoTrack(VideoStreamTrack):
     def __init__(self, buffer: CaptureBuffer, lowres_size: Tuple[int, int] = (960, 540)):
@@ -18,19 +20,21 @@ class CameraVideoTrack(VideoStreamTrack):
         self.lowres_size = lowres_size
 
     async def recv(self) -> VideoFrame:
-        frame = self.buffer.get()
+        with metrics.time("stream_receive"):
+            frame = self.buffer.get()
 
-        if frame is None:
-            return await self.recv()
+            if frame is None:
+                return await self.recv()
 
-        video_frame = VideoFrame.from_ndarray(frame, format='rgb24')
-        video_frame.pts, video_frame.time_base = await self.next_timestamp()
+            video_frame = VideoFrame.from_ndarray(frame, format='bgr24')
+            video_frame.pts, video_frame.time_base = await self.next_timestamp()
 
-        return video_frame
+            return video_frame
 
 class StreamProcess(Process):
     def __init__(self, 
                  buffer: CaptureBuffer, 
+                 detection_buffer: DetectionBuffer,
                  storage_db_path: str, 
                  stop_event: Event, # type: ignore
                  host: str = "0.0.0.0",
@@ -43,6 +47,7 @@ class StreamProcess(Process):
         self.host = host
         self.port = port
         self.lowres_size = lowres_size
+        self.detection_buffer = detection_buffer
         self.stop_event = stop_event
 
         self.pcs: set[RTCPeerConnection] = set()
@@ -60,6 +65,9 @@ class StreamProcess(Process):
     async def serve(self):
         app = web.Application()
         app.router.add_get("/", self.index)
+        app.router.add_get("/latest_detections", self.handle_latest_detections)
+        app.router.add_get("/websocket/detections", self.handle_detection_websocket)
+
         app.router.add_post("/offer", self.handle_offer)
 
         self.runner = web.AppRunner(app)
@@ -80,6 +88,29 @@ class StreamProcess(Process):
         self.pcs.clear()
         if self.runner is not None:
             await self.runner.cleanup()
+
+    async def handle_detection_websocket(self, request: web.Request) -> web.WebSocketResponse:
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+
+        last_version = -1
+        try:
+            while not self.stop_event.is_set() and not ws.closed:
+                detections, version = self.detection_buffer.get_with_version()
+                if version != last_version:
+                    last_version = version
+                    await ws.send_json(detections)
+                await asyncio.sleep(0.1)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await ws.close()
+
+        return ws
+
+    async def handle_latest_detections(self, request: web.Request) -> web.Response:
+        detections = self.detection_buffer.get()
+        return web.json_response(detections)
 
     async def handle_offer(self, request: web.Request) -> web.Response:
         params = await request.json()

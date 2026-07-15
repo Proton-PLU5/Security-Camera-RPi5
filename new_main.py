@@ -1,8 +1,9 @@
 import logging
-from multiprocessing import Event, Queue
+from multiprocessing import Event, Lock, Queue, Manager
 from mp.capture import CaptureProcess, CaptureBuffer
 from mp.storage import StorageProcess
 from mp.stream import StreamProcess
+from mp.detect import DetectProcess, DetectionBuffer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(processName)s %(levelname)s %(message)s")
 
@@ -12,6 +13,9 @@ def main():
     lowres_size = (960, 540)  # Width, Height
     video_size = (1920, 1080)  # Width, Height
     capture_buffer = CaptureBuffer(shape = (lowres_size[1], lowres_size[0], 3)) # Height, Width, Channels
+    detection_buffer = DetectionBuffer(max_bytes=65536)  # Adjust max_bytes as needed
+
+    storage_process = StorageProcess(storage_task_queue, stop_event, db_path='storage.db')
 
     capture_process = CaptureProcess(
         storage_task_queue=storage_task_queue,
@@ -23,14 +27,22 @@ def main():
         clip_dir='./clips',
     )
 
-    storage_process = StorageProcess(storage_task_queue, stop_event, db_path='storage.db')
+    detection_process = DetectProcess(
+        stop_event=stop_event,
+        capture_buffer=capture_buffer,
+        storage_task_queue=storage_task_queue,
+        detection_buffer=detection_buffer
+    )
+
     stream_process = StreamProcess(
         buffer=capture_buffer,
+        detection_buffer=detection_buffer,
         storage_db_path='storage.db',
         stop_event=stop_event)
 
     storage_process.start()
     capture_process.start()
+    detection_process.start()
     stream_process.start()
 
     import time
@@ -46,8 +58,9 @@ def main():
     stop_event.set()  # Signal the storage process to stop
     storage_process.join()  # Wait for the storage process to finish
     capture_process.join()  # Wait for the capture process to finish
+    detection_process.join()  # Wait for the detection process to finish
     stream_process.join()  # Wait for the stream process to finish
     capture_buffer.close()  # Close the shared buffer
-    
+
 if __name__ == "__main__":
     main()

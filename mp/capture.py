@@ -4,6 +4,7 @@ import os
 import time
 import uuid
 import numpy as np
+from data.metrics import metrics
 from mp.storage import Task, TaskFactory
 from picamera2 import Picamera2
 from picamera2.encoders import H264Encoder
@@ -102,25 +103,28 @@ class CaptureProcess(Process):
         
         try:
             self.start_clip()
-            while not self.stop_event.is_set():
-                # Check if the current clip has exceeded the specified length, and if so, start a new clip.
-                
-                if (time.time() * 1000) - self.current_clip_start > (self.clip_length * 1000):
-                    self.current_clip_start = time.time() * 1000
-                    self.end_clip()
-                    self.start_clip()
+            with metrics.time("capture_loop_time"):
+                while not self.stop_event.is_set():
+                    # Check if the current clip has exceeded the specified length, and if so, start a new clip.
+                    with metrics.time("capture_clip_turnaround_time"):
+                        if (time.time() * 1000) - self.current_clip_start > (self.clip_length * 1000):
+                            self.current_clip_start = time.time() * 1000
+                            self.end_clip()
+                            self.start_clip()
+                    
+                    with metrics.time("capture_frame_time"):
+                        request = self.camera.capture_request()
+                        try:
+                            # Process the captured frame
+                            lowres_frame = request.make_array("lores")
 
-                request = self.camera.capture_request()
-                try:
-                    # Process the captured frame
-                    lowres_frame = request.make_array("lores")
+                            timestamp = request.get_metadata().get("SensorTimestamp")
+                        finally:
+                            request.release()
 
-                    timestamp = request.get_metadata().get("SensorTimestamp")
-                finally:
-                    request.release()
-
-                # Write the low-resolution frame to the shared capture buffer
-                self.capture_buffer.write(lowres_frame)
+                    with metrics.time("buffer_write_time"):
+                        # Write the low-resolution frame to the shared capture buffer
+                        self.capture_buffer.write(lowres_frame)
         except Exception as e:
             logger.error(f"Error in CaptureProcess: {e}", exc_info=True)
         finally:

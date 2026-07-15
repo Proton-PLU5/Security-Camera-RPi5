@@ -1,21 +1,71 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Stream</title>
-<style>
-  html, body { margin: 0; background: #000; height: 100%; }
-  video { width: 100%; height: 100%; object-fit: contain; display: block; }
-  #status { position: fixed; top: 8px; left: 8px; color: #0f0; font: 12px monospace; }
-</style>
-</head>
-<body>
-<video id="video" autoplay playsinline muted></video>
-<div id="status">connecting...</div>
-
 <script>
 const statusEl = document.getElementById("status");
 const videoEl = document.getElementById("video");
+const canvasEl = document.getElementById("overlay");
+const ctx = canvasEl.getContext("2d");
+
+function resizeCanvas() {
+  const rect = videoEl.getBoundingClientRect();
+  canvasEl.width = rect.width;
+  canvasEl.height = rect.height;
+}
+window.addEventListener("resize", resizeCanvas);
+videoEl.addEventListener("loadedmetadata", resizeCanvas);
+
+function drawDetections(detections) {
+  resizeCanvas();
+  ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+  if (!detections || detections.length === 0) return;
+
+  const vw = videoEl.videoWidth;
+  const vh = videoEl.videoHeight;
+  if (!vw || !vh) return;
+
+  const scale = Math.min(canvasEl.width / vw, canvasEl.height / vh);
+  const offsetX = (canvasEl.width - vw * scale) / 2;
+  const offsetY = (canvasEl.height - vh * scale) / 2;
+
+  ctx.strokeStyle = "#00ff00";
+  ctx.lineWidth = 2;
+  ctx.font = "14px monospace";
+  ctx.textBaseline = "bottom";
+
+  for (const det of detections) {
+    const x = det.bbox_x * scale + offsetX;
+    const y = det.bbox_y * scale + offsetY;
+    const w = det.bbox_width * scale;
+    const h = det.bbox_height * scale;
+
+    ctx.strokeRect(x, y, w, h);
+
+    const label = `${det.class_name} ${(det.confidence * 100).toFixed(0)}%`;
+    const textWidth = ctx.measureText(label).width;
+    ctx.fillStyle = "#00ff00";
+    ctx.fillRect(x, y, textWidth + 6, 16);
+    ctx.fillStyle = "#000";
+    ctx.fillText(label, x + 3, y + 15);
+  }
+}
+
+function connectDetectionsWs() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(`${proto}//${location.host}/websocket/detections`);
+
+  ws.onmessage = (event) => {
+    const detections = JSON.parse(event.data);
+    drawDetections(detections);
+  };
+
+  ws.onclose = () => {
+    // auto-reconnect if server restarts or connection drops
+    setTimeout(connectDetectionsWs, 1000);
+  };
+
+  ws.onerror = (err) => {
+    console.error("detections ws error:", err);
+    ws.close();
+  };
+}
 
 async function start() {
   const pc = new RTCPeerConnection();
@@ -33,7 +83,6 @@ async function start() {
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  // wait for ICE gathering to complete before sending offer
   await new Promise((resolve) => {
     if (pc.iceGatheringState === "complete") return resolve();
     pc.onicegatheringstatechange = () => {
@@ -52,6 +101,8 @@ async function start() {
 
   const answer = await res.json();
   await pc.setRemoteDescription(answer);
+
+  connectDetectionsWs();
 }
 
 start().catch((err) => {
@@ -59,5 +110,3 @@ start().catch((err) => {
   console.error(err);
 });
 </script>
-</body>
-</html>
