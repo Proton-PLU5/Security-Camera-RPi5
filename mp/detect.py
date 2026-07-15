@@ -22,18 +22,23 @@ class DetectionBuffer:
         self.version = Value('l', 0)
 
     def get(self) -> list:
-        # Return the latest detections snapshot (no lock needed to read active buffer, no reader blocking)
+        # Return the latest detections snapshot
         active = self.active.value
         buf = self.buf_a if active == 0 else self.buf_b
         length_holder = self.len_a if active == 0 else self.len_b
         n = length_holder.value
+
+        if n == 0: # No detections available
+            return []
+        
         payload = bytes(buf[:n]) # type: ignore
         return json.loads(payload.decode("utf-8"))
 
     def get_with_version(self) -> tuple[list, int]:
-        # Use this if a consumer needs to skip processing the same detections twice
+        # Return the latest detections snapshot along with its version
+        detections = self.get()
         version = self.version.value
-        return self.get(), version
+        return detections, version
 
     def write(self, detections: list):
         payload = json.dumps(detections).encode("utf-8")

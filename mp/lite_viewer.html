@@ -69,7 +69,7 @@ function drawDetections(detections) {
 
 function connectDetectionsWs() {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const ws = new WebSocket(`${proto}//${location.host}/ws/detections`);
+  const ws = new WebSocket(`${proto}//${location.host}/websocket/detections`);
 
   ws.onmessage = (event) => {
     const detections = JSON.parse(event.data);
