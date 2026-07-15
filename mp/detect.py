@@ -7,8 +7,10 @@ from ultralytics import YOLO # type: ignore
 from data.metrics import metrics
 import ncnn
 import time
+import logging
 
 MAX_BYTES = 65536
+
 
 class DetectionBuffer:
     def __init__(self, max_bytes=MAX_BYTES):
@@ -85,47 +87,54 @@ class DetectProcess(Process):
         self.model = YOLO("./capture/detection/yolo26s_ncnn_model")  # Load the YOLO model  
         self.task_factory = TaskFactory()
         
-        while self.stop_event.is_set() == False:
-            frame = self.capture_buffer.get()
-            if frame is None:
-                continue
+        logger = logging.getLogger(__name__)
+        logger.info("Detection process started.")
+        
+        try:
+            while self.stop_event.is_set() == False:
+                frame = self.capture_buffer.get()
+                if frame is None:
+                    continue
 
-            with metrics.time("detection_inference_time"):
-                results = self.model(frame)  # Perform detection on the frame
+                with metrics.time("detection_inference_time"):
+                    results = self.model(frame)  # Perform detection on the frame
 
-            # Process results and create tasks for storage
-            detections = []
-            with metrics.time("detection_processing_time"):
-                for result in results:
-                    for box in result.boxes:
-                        clip_id = "some_clip_id"  # You would get this from your capture logic
-                        timestamp = time.time()  # Current timestamp
-                        class_name = result.names[int(box.cls.item())]
-                        confidence = float(box.conf.item())
-                        bbox_x, bbox_y, bbox_width, bbox_height = box.xywh[0].tolist()
+                # Process results and create tasks for storage
+                detections = []
+                with metrics.time("detection_processing_time"):
+                    for result in results:
+                        for box in result.boxes:
+                            clip_id = "some_clip_id"  # You would get this from your capture logic
+                            timestamp = time.time()  # Current timestamp
+                            class_name = result.names[int(box.cls.item())]
+                            confidence = float(box.conf.item())
+                            bbox_x, bbox_y, bbox_width, bbox_height = box.xywh[0].tolist()
 
-                        task = self.task_factory.insert_detection(
-                            clip_id=clip_id,
-                            timestamp=timestamp,
-                            class_name=class_name,
-                            confidence=confidence,
-                            bbox_x=bbox_x,
-                            bbox_y=bbox_y,
-                            bbox_width=bbox_width,
-                            bbox_height=bbox_height
-                        )
+                            task = self.task_factory.insert_detection(
+                                clip_id=clip_id,
+                                timestamp=timestamp,
+                                class_name=class_name,
+                                confidence=confidence,
+                                bbox_x=bbox_x,
+                                bbox_y=bbox_y,
+                                bbox_width=bbox_width,
+                                bbox_height=bbox_height
+                            )
 
-                        self.storage_task_queue.put(task)  # Send task to storage process
-                        
-                        detections.append({
-                            "clip_id": clip_id,
-                            "timestamp": timestamp,
-                            "class_name": class_name,
-                            "confidence": confidence,
-                            "bbox_x": bbox_x,
-                            "bbox_y": bbox_y,
-                            "bbox_width": bbox_width,
-                            "bbox_height": bbox_height
-                        })
+                            self.storage_task_queue.put(task)  # Send task to storage process
+                            
+                            detections.append({
+                                "clip_id": clip_id,
+                                "timestamp": timestamp,
+                                "class_name": class_name,
+                                "confidence": confidence,
+                                "bbox_x": bbox_x,
+                                "bbox_y": bbox_y,
+                                "bbox_width": bbox_width,
+                                "bbox_height": bbox_height
+                            })
 
-                self.detection_buffer.write(detections)  # Write detections to shared buffer
+                    self.detection_buffer.write(detections)  # Write detections to shared buffer
+        except Exception as e:
+            logger.error(f"Error in detection process: {e}")
+        
