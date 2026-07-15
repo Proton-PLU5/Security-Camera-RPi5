@@ -7,7 +7,7 @@ from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.widgets import RichLog, Static, Input
-
+from multiprocessing import Process
 
 class TextualLogHandler(logging.Handler):
     """
@@ -70,12 +70,9 @@ class VisionApp(App):
     }
     """
 
-    def __init__(self, processes: dict | None = None, **kwargs):
+    def __init__(self, processes: dict[str, Process], **kwargs):
         super().__init__(**kwargs)
-        # passed in from main.py, which owns creating/starting the
-        # actual pipeline threads - the app just reads from this dict
-        # for the status command and the header's live status label.
-        self.processes: dict = processes or {}
+        self.processes: dict[str, Process] = processes
 
     # -----------------------------
     # LIFECYCLE

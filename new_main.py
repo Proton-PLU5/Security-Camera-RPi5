@@ -57,9 +57,7 @@ def main():
     config = Config("config.toml")
 
     app = VisionApp(
-        processes=processes,
-        capture_buffer=capture_buffer,
-        detection_buffer=detection_buffer
+        processes=processes
     )
 
     # Route stdlib logging into the app's log widget instead of real
