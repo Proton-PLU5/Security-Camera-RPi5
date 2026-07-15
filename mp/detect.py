@@ -96,8 +96,12 @@ class DetectProcess(Process):
                 if frame is None:
                     continue
 
+                logger.info("Frame captured, running detection...")
+
                 with metrics.time("detection_inference_time"):
                     results = self.model(frame)  # Perform detection on the frame
+
+                logger.info(f"Detection completed. Found {len(results[0].boxes)} objects.")
 
                 # Process results and create tasks for storage
                 detections = []
