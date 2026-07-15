@@ -1,3 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Stream</title>
+<style>
+  html, body { margin: 0; background: #000; height: 100%; }
+  #container { position: relative; width: 100%; height: 100%; }
+  video { width: 100%; height: 100%; object-fit: contain; display: block; }
+  canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+  #status { position: fixed; top: 8px; left: 8px; color: #0f0; font: 12px monospace; z-index: 10; }
+</style>
+</head>
+<body>
+<div id="container">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
+</div>
+<div id="status">connecting...</div>
+
 <script>
 const statusEl = document.getElementById("status");
 const videoEl = document.getElementById("video");
@@ -49,7 +69,7 @@ function drawDetections(detections) {
 
 function connectDetectionsWs() {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const ws = new WebSocket(`${proto}//${location.host}/websocket/detections`);
+  const ws = new WebSocket(`${proto}//${location.host}/ws/detections`);
 
   ws.onmessage = (event) => {
     const detections = JSON.parse(event.data);
@@ -57,7 +77,6 @@ function connectDetectionsWs() {
   };
 
   ws.onclose = () => {
-    // auto-reconnect if server restarts or connection drops
     setTimeout(connectDetectionsWs, 1000);
   };
 
@@ -110,3 +129,5 @@ start().catch((err) => {
   console.error(err);
 });
 </script>
+</body>
+</html>
