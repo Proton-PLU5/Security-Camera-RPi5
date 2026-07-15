@@ -1,9 +1,11 @@
 import logging
 from multiprocessing import Event, Lock, Queue, Manager
+from firmware.config import Config
 from mp.capture import CaptureProcess, CaptureBuffer
 from mp.storage import StorageProcess
 from mp.stream import StreamProcess
 from mp.detect import DetectProcess, DetectionBuffer
+from mp.vision_app import TextualLogHandler, VisionApp
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(processName)s %(levelname)s %(message)s")
 
@@ -45,22 +47,49 @@ def main():
     detection_process.start()
     stream_process.start()
 
-    import time
-    try:
-        while True:
-            print(capture_process.is_alive(), storage_process.is_alive(), stream_process.is_alive())
-            time.sleep(1)
-    except KeyboardInterrupt:
-        pass
+    processes = {
+        "capture": capture_process,
+        "detection": detection_process,
+        "stream": stream_process,
+        "storage": storage_process
+    }
 
-    stop_event.set()
-    
-    stop_event.set()  # Signal the storage process to stop
-    storage_process.join()  # Wait for the storage process to finish
-    capture_process.join()  # Wait for the capture process to finish
-    detection_process.join()  # Wait for the detection process to finish
-    stream_process.join()  # Wait for the stream process to finish
-    capture_buffer.close()  # Close the shared buffer
+    config = Config("config.toml")
+
+    app = VisionApp(
+        processes=processes,
+        capture_buffer=capture_buffer,
+        detection_buffer=detection_buffer
+    )
+
+    # Route stdlib logging into the app's log widget instead of real
+    # stdout/stderr (which the full-screen app owns and would corrupt).
+    # Set handlers directly on the root logger rather than
+    # logging.basicConfig() - basicConfig() silently no-ops if anything
+    # (ultralytics, picamera2, etc.) already attached a handler earlier.
+    file_handler = logging.FileHandler(config.getString("log_file", "./terminal.log"), mode="a", encoding="utf-8")
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(threadName)s] %(name)s: %(message)s")
+    )
+ 
+    tui_handler = TextualLogHandler(app)
+    tui_handler.setLevel(logging.INFO)
+    tui_handler.setFormatter(logging.Formatter("[%(threadName)s] %(name)s: %(message)s"))
+ 
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.handlers = [file_handler, tui_handler]
+
+    try:
+        app.run()
+    finally:
+        stop_event.set()  # Signal the storage process to stop
+        storage_process.join()  # Wait for the storage process to finish
+        capture_process.join()  # Wait for the capture process to finish
+        detection_process.join()  # Wait for the detection process to finish
+        stream_process.join()  # Wait for the stream process to finish
+        capture_buffer.close()  # Close the shared buffer
 
 if __name__ == "__main__":
     main()
