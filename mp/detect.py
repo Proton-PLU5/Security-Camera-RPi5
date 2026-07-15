@@ -100,9 +100,9 @@ class DetectProcess(Process):
                     for box in result.boxes:
                         clip_id = "some_clip_id"  # You would get this from your capture logic
                         timestamp = time.time()  # Current timestamp
-                        class_name = box.cls  # Class name from detection
-                        confidence = box.conf  # Confidence score
-                        bbox_x, bbox_y, bbox_width, bbox_height = box.xywh  # Bounding box coordinates
+                        class_name = result.names[int(box.cls.item())]
+                        confidence = float(box.conf.item())
+                        bbox_x, bbox_y, bbox_width, bbox_height = box.xywh[0].tolist()
 
                         task = self.task_factory.insert_detection(
                             clip_id=clip_id,
