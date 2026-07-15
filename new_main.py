@@ -96,6 +96,7 @@ def main():
         detection_process.join()  # Wait for the detection process to finish
         stream_process.join()  # Wait for the stream process to finish
         capture_buffer.close()  # Close the shared buffer
+        print(detection_process.exitcode)
 
 if __name__ == "__main__":
     main()
