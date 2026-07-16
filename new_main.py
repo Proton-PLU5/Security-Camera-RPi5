@@ -1,5 +1,6 @@
 import logging
 from multiprocessing import Event, Lock, Queue, Manager, set_start_method
+import uuid
 from firmware.config import Config
 from mp.capture import CaptureProcess, CaptureBuffer
 from mp.storage import StorageProcess
@@ -19,9 +20,10 @@ def main():
     video_size = (1920, 1080)  # Width, Height
     capture_buffer = CaptureBuffer(shape = (lowres_size[1], lowres_size[0], 3)) # Height, Width, Channels
     detection_buffer = DetectionBuffer(max_bytes=65536)  # Adjust max_bytes as needed
+    config = Config("config.toml")
 
     # Set up Zeroconf service for mDNS advertisement
-    
+    device_uuid = config.getString("device_uuid", uuid.uuid4().hex)
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
     camera_port = 8080
@@ -30,7 +32,7 @@ def main():
     service_name = f"{hostname}.{service_type}"
 
     properties = {
-        "path": "/",
+        "id": device_uuid,
         "port": str(camera_port),
         "version": "1.0.0",
     }
@@ -86,8 +88,6 @@ def main():
         "storage": storage_process
     }
 
-    config = Config("config.toml")
-
     app = VisionApp(
         processes=processes
     )
@@ -122,7 +122,8 @@ def main():
         detection_process.join()  # Wait for the detection process to finish
         stream_process.join()  # Wait for the stream process to finish
         capture_buffer.close()  # Close the shared buffer
-        print(detection_process.exitcode)
+
+        config.save_configurations()  # Save configurations to the config file
 
 if __name__ == "__main__":
     main()
