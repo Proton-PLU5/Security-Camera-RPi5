@@ -19,6 +19,7 @@ dependencies = [
     "tomlkit>=0.15.0",
     "torch>=2.12.1",
     "ultralytics>=8.4.84",
+    "zeroconf>=0.150.0",
 ]
 [tool.uv]
 override-dependencies = [

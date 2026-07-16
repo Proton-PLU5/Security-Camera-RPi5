@@ -6,6 +6,8 @@ from mp.storage import StorageProcess
 from mp.stream import StreamProcess
 from mp.detect import DetectProcess, DetectionBuffer
 from mp.vision_app import TextualLogHandler, VisionApp
+import socket
+from zeroconf import ServiceInfo, Zeroconf
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(processName)s %(levelname)s %(message)s")
 set_start_method("spawn", force=True)  # Use 'spawn' to avoid issues with OpenCV and PyTorch in child processes
@@ -17,6 +19,33 @@ def main():
     video_size = (1920, 1080)  # Width, Height
     capture_buffer = CaptureBuffer(shape = (lowres_size[1], lowres_size[0], 3)) # Height, Width, Channels
     detection_buffer = DetectionBuffer(max_bytes=65536)  # Adjust max_bytes as needed
+
+    # Set up Zeroconf service for mDNS advertisement
+    
+    hostname = socket.gethostname()
+    local_ip = socket.gethostbyname(hostname)
+    camera_port = 8080
+
+    service_type = "_camera._tcp.local."
+    service_name = f"{hostname}.{service_type}"
+
+    properties = {
+        "path": "/",
+        "port": str(camera_port),
+        "version": "1.0.0",
+    }
+
+    info = ServiceInfo(
+        service_type,
+        service_name,
+        addresses=[socket.inet_aton(local_ip)],
+        port=camera_port,
+        properties=properties,
+        server=f"{hostname}.local.",
+    )
+
+    zeroconf = Zeroconf()
+    zeroconf.register_service(info)
 
     storage_process = StorageProcess(storage_task_queue, stop_event, db_path='storage.db')
 
@@ -41,7 +70,9 @@ def main():
         buffer=capture_buffer,
         detection_buffer=detection_buffer,
         storage_db_path='storage.db',
-        stop_event=stop_event)
+        stop_event=stop_event,
+        port=camera_port,
+        )
 
     storage_process.start()
     capture_process.start()
@@ -83,6 +114,8 @@ def main():
     try:
         app.run()
     finally:
+        zeroconf.unregister_service(info)
+        zeroconf.close()
         stop_event.set()  # Signal the storage process to stop
         storage_process.join()  # Wait for the storage process to finish
         capture_process.join()  # Wait for the capture process to finish
