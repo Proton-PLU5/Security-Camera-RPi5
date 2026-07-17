@@ -64,8 +64,8 @@ class CaptureProcess(Process):
         logger.info("Starting CaptureProcess")
         self.camera.start()
         logger.info("Camera started")
-        self.current_clip_start = time.time() * 1000
-        self.current_clip_id = uuid.uuid4().hex
+
+        self.start_clip()  # Start the first clip
 
         last_detection_version = -1  # Track the last processed detection version
         
@@ -79,7 +79,7 @@ class CaptureProcess(Process):
                             self.end_clip()
                             self.start_clip()
                             self.detection_task_buffer = []  # Reset the detection task buffer for the new clip
-                            self.last_detection_version = -1  # Reset the last detection version for the new clip
+                            last_detection_version = -1  # Reset the last detection version for the new clip
                     
                     with metrics.time("capture_frame_time"):
                         request = self.camera.capture_request()
@@ -93,7 +93,8 @@ class CaptureProcess(Process):
 
                     with metrics.time("buffer_write_time"):
                         # Write the low-resolution frame to the shared capture buffer
-                        self.capture_buffer.write(lowres_frame, self.current_clip_id)
+                        if self.current_clip_id is not None:
+                            self.capture_buffer.write(lowres_frame, self.current_clip_id)
 
                     with metrics.time("detection_processing_time"):
                         detections, version = self.detection_buffer.get_with_version()
@@ -172,13 +173,17 @@ class CaptureProcess(Process):
         self.current_clip_id = None  # Reset the current clip ID
 
     def process_detection_tasks(self):
+        if self.current_clip_id is None:
+            logger.warning("No current clip ID available for processing detection tasks.")
+            return
+
         # Process the detection tasks for the current clip
         if self.detection_task_buffer:
             for detection in self.detection_task_buffer:
                 if detection:  # Only process if there are detections
                     for d in detection:
                         insert_detection_task = self.storage_task_factory.insert_detection(
-                            clip_id=self.current_clip_id, # type: ignore
+                            clip_id=self.current_clip_id,
                             timestamp=d["timestamp"],
                             class_name=d["class_name"],
                             confidence=d["confidence"],

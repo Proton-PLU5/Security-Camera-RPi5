@@ -4,6 +4,7 @@ import sqlite3
 from dataclasses import dataclass
 import time
 import logging
+import queue
 
 @dataclass
 class Task:
@@ -174,8 +175,10 @@ class StorageProcess(Process):
             timeout = (retry_heap[0][0] - now) if retry_heap else None
             try:
                 cmd = self.task_queue.get(timeout=timeout)
+            except queue.Empty:
+                continue  # No new command, loop back to check retry_heap
             except Exception as e:
-                logger.error(f"Error occurred while fetching command from queue: {e}")
+                logger.error(f"Error occurred while fetching command from queue: {e}", exc_info=True)
                 continue
             
             # If the command is a stop command, break the loop and exit
