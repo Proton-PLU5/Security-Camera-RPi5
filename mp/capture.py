@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from multiprocessing import Event, Process, Queue, shared_memory, Value
 import os
