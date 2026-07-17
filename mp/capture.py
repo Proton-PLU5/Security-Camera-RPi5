@@ -5,7 +5,7 @@ import time
 import uuid
 from data.metrics import metrics
 from mp.capture_buffer import CaptureBuffer
-from mp.detect import DetectionBuffer
+from mp.detection_buffer import DetectionBuffer
 from mp.storage import Task, TaskFactory
 from picamera2 import Picamera2
 from picamera2.encoders import H264Encoder
@@ -187,7 +187,7 @@ class CaptureProcess(Process):
                 if detection:  # Only process if there are detections
                     for d in detection:
                         insert_detection_task = self.storage_task_factory.insert_detection(
-                            clip_id=self.current_clip_id,
+                            clip_id=d['"clip_id'],
                             timestamp=d["timestamp"],
                             class_name=d["class_name"],
                             confidence=d["confidence"],
