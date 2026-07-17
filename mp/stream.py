@@ -66,6 +66,7 @@ class StreamProcess(Process):
     async def serve(self):
         app = web.Application()
         app.router.add_get("/", self.index)
+        app.router.add_get("/clip/{clip_id:.*}/detections", self.handle_get_detections_for_clip)
         app.router.add_get("/clip/{clip_id:.*}", self.handle_get_clip)
         app.router.add_get("/clips", self.handle_get_clips_before)
         app.router.add_get("/latest_detections", self.handle_latest_detections)
@@ -91,6 +92,53 @@ class StreamProcess(Process):
         self.pcs.clear()
         if self.runner is not None:
             await self.runner.cleanup()
+
+    async def handle_get_detections_for_clip(self, request: web.Request) -> web.Response:
+        
+        clip_id = request.match_info.get("clip_id")
+
+        connection = sqlite.connect(self.storage_db_path, timeout=5.0)
+        result = {}
+        try:
+            cursor = connection.cursor()
+            
+            cursor.execute(
+                "SELECT started_at FROM clips WHERE id = ?",
+                (clip_id,),
+            )
+
+            clip_row = cursor.fetchone()
+
+            if clip_row is None:
+                return web.json_response({"error": "Clip not found"}, status=404)
+            
+            cursor.execute(
+                "SELECT timestamp, class_name, confidence, bbox_x, bbox_y, bbox_width, bbox_height"
+                " FROM detections WHERE clip_id = ? ORDER BY timestamp ASC",
+                (clip_id,),
+            )
+
+            detections = [
+                {
+                    "offset_seconds": (row[0] - clip_row[0]) / 1000.0,
+                    "class_name": row[1],
+                    "confidence": row[2],
+                    "bbox_x": row[3],
+                    "bbox_y": row[4],
+                    "bbox_width": row[5],
+                    "bbox_height": row[6],
+                }
+                for row in cursor.fetchall()
+            ]
+
+            result = {
+                "lowres_size": list(self.lowres_size),
+                "detections": detections,
+            }
+        finally:
+            connection.close()
+
+        return web.json_response(result)
 
     async def handle_get_clip(self, request: web.Request) -> web.StreamResponse:
         clip_id = request.match_info.get("clip_id")
