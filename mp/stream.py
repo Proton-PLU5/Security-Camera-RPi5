@@ -40,7 +40,7 @@ class StreamProcess(Process):
                  stop_event: Event, # type: ignore
                  host: str = "0.0.0.0",
                  port: int = 8080,
-                 lowres_size: tuple[int, int] = (960, 540),
+                 lowres_size: tuple[int, int] = (960, 544),
                 ):
         super().__init__(daemon=True)
         self.buffer = buffer

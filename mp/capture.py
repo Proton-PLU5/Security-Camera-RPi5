@@ -187,7 +187,7 @@ class CaptureProcess(Process):
                 if detection:  # Only process if there are detections
                     for d in detection:
                         insert_detection_task = self.storage_task_factory.insert_detection(
-                            clip_id=d["clip_id"],
+                            clip_id=self.current_clip_id,
                             timestamp=d["timestamp"],
                             class_name=d["class_name"],
                             confidence=d["confidence"],
