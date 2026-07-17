@@ -139,5 +139,5 @@ class DetectProcess(Process):
 
                     self.detection_buffer.write(detections)  # Write detections to shared buffer
         except Exception as e:
-            logger.error(f"Error in detection process: {e}")
+            logger.info(f"Error in detection process: {e}")
         

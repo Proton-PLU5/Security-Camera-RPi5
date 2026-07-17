@@ -101,7 +101,7 @@ class StreamProcess(Process):
                     last_version = version
                     await ws.send_json(detections)
                 await asyncio.sleep(0.1)
-        except asyncio.CancelledError:
+        except Exception as e:
             pass
         finally:
             await ws.close()

@@ -17,7 +17,7 @@ def main():
     storage_task_queue = Queue()
     stop_event = Event()
     lowres_size = (960, 544)  # Width, Height
-    video_size = (1920, 1080)  # Width, Height
+    video_size = (1920, 1088)  # Width, Height
     capture_buffer = CaptureBuffer(shape = (lowres_size[1], lowres_size[0], 3)) # Height, Width, Channels
     detection_buffer = DetectionBuffer(max_bytes=65536)  # Adjust max_bytes as needed
     config = Config("config.toml")
