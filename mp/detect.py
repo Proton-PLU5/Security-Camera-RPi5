@@ -65,12 +65,14 @@ class DetectProcess(Process):
                  capture_buffer : CaptureBuffer,
                  storage_task_queue : "Queue[Task]",
                  detection_buffer : DetectionBuffer,
+                 lowres_size: tuple[int, int] = (960, 544)
                  ):
         super().__init__(daemon=True)
         self.stop_event = stop_event
         self.capture_buffer = capture_buffer
         self.storage_task_queue = storage_task_queue
         self.detection_buffer = detection_buffer
+        self.lowres_size = lowres_size
 
     def configure_ncnn(self):
         # NCNN THREAD LIMITING
@@ -98,7 +100,7 @@ class DetectProcess(Process):
 
 
                 with metrics.time("detection_inference_time"):
-                    results = self.model(frame, verbose=False)  # Perform detection on the frame
+                    results = self.model(frame, imgsz=self.lowres_size, verbose=False)  # Perform detection on the frame
 
                 # Process results and create tasks for storage
                 detections = []

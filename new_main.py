@@ -65,7 +65,8 @@ def main():
         stop_event=stop_event,
         capture_buffer=capture_buffer,
         storage_task_queue=storage_task_queue,
-        detection_buffer=detection_buffer
+        detection_buffer=detection_buffer, 
+        lowres_size=lowres_size
     )
 
     stream_process = StreamProcess(
