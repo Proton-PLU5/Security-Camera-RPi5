@@ -38,6 +38,7 @@ class CaptureProcess(Process):
         self.detection_buffer = detection_buffer
         self.allowed_triggers = allowed_triggers
         self.clip_has_detections = False  # Track if the current clip has detections
+        self.clip_detected_classes = set()  # Track the classes detected in the current clip
         self.pending_start_task = None  # Store the pending start task if a clip is not yet started
         self.current_filename = None  # Track the current filename for the clip
         
@@ -105,10 +106,11 @@ class CaptureProcess(Process):
                             self.detection_task_buffer.append(detections) 
 
                             # Check if the current clip has detections and if any of them match the allowed triggers
-                            if not self.clip_has_detections and detections:
-                                if any(d.get("class_name") in self.allowed_triggers for d in detections):
-                                    self.clip_has_detections = True
-
+                            if detections:
+                                for detection in detections:
+                                    if detection["class_name"] in self.allowed_triggers:
+                                        self.clip_has_detections = True
+                                        self.clip_detected_classes.add(detection["class_name"])
         except Exception as e:
             logger.error(f"Error in CaptureProcess: {e}", exc_info=True)
         finally:
@@ -148,11 +150,12 @@ class CaptureProcess(Process):
 
         end_time = time.time() * 1000
         
-        if self.clip_has_detections:
+        if self.clip_has_detections or self.clip_detected_classes:
             self.storage_task_queue.put(self.pending_start_task)  # type: ignore # Send the pending start task to storage
             end_clip_task = self.storage_task_factory.end_clip(
                 clip_id=self.current_clip_id,
-                ended_at=end_time
+                ended_at=end_time,
+                trigger=str(self.clip_has_detections)
             )
             self.storage_task_queue.put(end_clip_task)  # Send the end clip task to storage
             logger.info(f"Ended clip {self.current_clip_id} at {end_time}")
@@ -171,6 +174,7 @@ class CaptureProcess(Process):
         self.pending_start_task = None  # Reset the pending start tasks
         self.current_filename = None  # Reset the current filename
         self.current_clip_id = None  # Reset the current clip ID
+        self.clip_detected_classes.clear()  # Clear the set of detected classes
 
     def process_detection_tasks(self):
         if self.current_clip_id is None:

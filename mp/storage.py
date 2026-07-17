@@ -24,8 +24,8 @@ class TaskFactory:
         command = Task('start_clip', {'clip_id': clip_id, 'file_path': file_path, 'start_time': start_time, 'trigger': trigger})
         return command
 
-    def end_clip(self, clip_id: str, ended_at: float) -> Task:
-        command = Task('end_clip', {'clip_id': clip_id, 'ended_at': ended_at})
+    def end_clip(self, clip_id: str, ended_at: float, trigger: str) -> Task:
+        command = Task('end_clip', {'clip_id': clip_id, 'ended_at': ended_at, 'trigger': trigger})
         return command
 
     def insert_detection(self, clip_id: str, timestamp: float, class_name: str, confidence: float,
@@ -131,7 +131,7 @@ class StorageProcess(Process):
                 (p['clip_id'], p['start_time'], p['file_path'], p['trigger'])
             )
         elif cmd.type == 'end_clip':
-            cursor.execute("UPDATE clips SET ended_at = ? WHERE id = ?", (p['ended_at'], p['clip_id']))
+            cursor.execute("UPDATE clips SET ended_at = ?, trigger = ? WHERE id = ?", (p['ended_at'], p['trigger'], p['clip_id']))
         elif cmd.type == 'insert_detection':
             cursor.execute(
                 '''INSERT INTO detections

@@ -1,8 +1,8 @@
 import asyncio
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 from aiohttp import web
-import aiohttp
+import sqlite3 as sqlite
 from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription, MediaStreamTrack, VideoStreamTrack
 from multiprocessing import Process, Queue, Event
 from data.metrics import metrics
@@ -65,6 +65,7 @@ class StreamProcess(Process):
     async def serve(self):
         app = web.Application()
         app.router.add_get("/", self.index)
+        app.router.add_get("/clips", self.handle_get_clips_before)
         app.router.add_get("/latest_detections", self.handle_latest_detections)
         app.router.add_get("/websocket/detections", self.handle_detection_websocket)
 
@@ -88,6 +89,35 @@ class StreamProcess(Process):
         self.pcs.clear()
         if self.runner is not None:
             await self.runner.cleanup()
+
+    def dict_factory(self, cursor: sqlite.Cursor, row):
+        fields = [column[0] for column in cursor.description]
+        return {key: value for key, value in zip(fields, row)}
+
+    async def handle_get_clips_before(self, request: web.Request) -> web.Response:
+        if request.query.get("before") is None:
+            return web.json_response({"error": "Missing 'before' query parameter"}, status=400)
+
+        # Epoch timestamp in seconds; default to 0 if not provided
+        before_timestamp = float(request.query.get("before", 0)) * 1000  # Convert to milliseconds
+
+        # Create a database connection and fetch clips that have ended after the given timestamp
+        connection = sqlite.connect(self.storage_db_path)
+        connection.row_factory = self.dict_factory
+        clips = []
+
+        try:
+            cursor = connection.cursor()
+
+            # Fetch clips from the database that have ended before the given timestamp
+            cursor.execute("SELECT * FROM clips WHERE ended_at < ?", (before_timestamp,))
+            clips = cursor.fetchall()
+        except Exception as e:
+            logging.error(f"Error fetching clips from database: {e}")
+        finally:
+            connection.close()
+
+        return web.json_response(clips)
 
     async def handle_detection_websocket(self, request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse()
