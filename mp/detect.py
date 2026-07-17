@@ -56,7 +56,7 @@ class DetectProcess(Process):
                 with metrics.time("detection_processing_time"):
                     for result in results:
                         for box in result.boxes:
-                            timestamp = time.time()  # Current timestamp
+                            timestamp = time.time() * 1000  # Current timestamp in ms
                             class_name = result.names[int(box.cls.item())]
                             confidence = float(box.conf.item())
 
