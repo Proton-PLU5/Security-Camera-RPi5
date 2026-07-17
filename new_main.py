@@ -88,6 +88,7 @@ def main():
         "storage": storage_process
     }
 
+    """
     app = VisionApp(
         processes=processes
     )
@@ -110,9 +111,21 @@ def main():
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.handlers = [file_handler, tui_handler]
+    """
   
     try:
-        app.run()
+        while True:
+            # Main loop can be used to monitor processes or handle other tasks
+            for name, process in processes.items():
+                if not process.is_alive():
+                    logging.error(f"{name} process has stopped unexpectedly.")
+                    stop_event.set()  # Signal all processes to stop
+                    break
+            if stop_event.is_set():
+                break
+    except KeyboardInterrupt:
+        logging.info("KeyboardInterrupt received. Stopping all processes...")
+        stop_event.set()  # Signal all processes to stop
     finally:
         zeroconf.unregister_service(info)
         zeroconf.close()
