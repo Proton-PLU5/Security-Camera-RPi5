@@ -21,7 +21,7 @@ class CameraVideoTrack(VideoStreamTrack):
 
     async def recv(self) -> VideoFrame:
         with metrics.time("stream_receive"):
-            frame = self.buffer.get()
+            frame, clip_id = self.buffer.get()
 
             if frame is None:
                 return await self.recv()

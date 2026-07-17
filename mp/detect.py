@@ -23,7 +23,7 @@ class DetectionBuffer:
         self.active = Value('i', 0)  # 0 = buf_a is readable, 1 = buf_b is readable
         self.version = Value('l', 0)
 
-    def get(self) -> list:
+    def get(self) -> list[dict]:
         # Return the latest detections snapshot
         active = self.active.value
         buf = self.buf_a if active == 0 else self.buf_b
@@ -36,13 +36,13 @@ class DetectionBuffer:
         payload = bytes(buf[:n]) # type: ignore
         return json.loads(payload.decode("utf-8"))
 
-    def get_with_version(self) -> tuple[list, int]:
+    def get_with_version(self) -> tuple[list[dict], int]:
         # Return the latest detections snapshot along with its version
         detections = self.get()
         version = self.version.value
         return detections, version
 
-    def write(self, detections: list):
+    def write(self, detections: list[dict]):
         payload = json.dumps(detections).encode("utf-8")
         if len(payload) > self.max_bytes:
             raise ValueError(f"Detections payload ({len(payload)} bytes) exceeds max_bytes ({self.max_bytes})")
@@ -94,7 +94,7 @@ class DetectProcess(Process):
         
         try:
             while self.stop_event.is_set() == False:
-                frame = self.capture_buffer.get()
+                frame, clip_id = self.capture_buffer.get()
                 if frame is None:
                     continue
 
@@ -107,24 +107,14 @@ class DetectProcess(Process):
                 with metrics.time("detection_processing_time"):
                     for result in results:
                         for box in result.boxes:
-                            clip_id = "some_clip_id"  # You would get this from your capture logic
                             timestamp = time.time()  # Current timestamp
                             class_name = result.names[int(box.cls.item())]
                             confidence = float(box.conf.item())
+
+                            if confidence < 0.5:  # Filter out low-confidence detections
+                                continue
+
                             bbox_x, bbox_y, bbox_width, bbox_height = box.xywh[0].tolist()
-
-                            task = self.task_factory.insert_detection(
-                                clip_id=clip_id,
-                                timestamp=timestamp,
-                                class_name=class_name,
-                                confidence=confidence,
-                                bbox_x=bbox_x,
-                                bbox_y=bbox_y,
-                                bbox_width=bbox_width,
-                                bbox_height=bbox_height
-                            )
-
-                            self.storage_task_queue.put(task)  # Send task to storage process
                             
                             detections.append({
                                 "clip_id": clip_id,

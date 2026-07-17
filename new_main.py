@@ -59,6 +59,7 @@ def main():
         lowres_size=lowres_size,
         video_size=video_size,
         clip_dir='./clips',
+        detection_buffer=detection_buffer,
     )
 
     detection_process = DetectProcess(
