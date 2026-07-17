@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from typing import Tuple
 from aiohttp import web
 import sqlite3 as sqlite
@@ -65,6 +66,7 @@ class StreamProcess(Process):
     async def serve(self):
         app = web.Application()
         app.router.add_get("/", self.index)
+        app.router.add_get("/clip", self.handle_get_clip)
         app.router.add_get("/clips", self.handle_get_clips_before)
         app.router.add_get("/latest_detections", self.handle_latest_detections)
         app.router.add_get("/websocket/detections", self.handle_detection_websocket)
@@ -89,6 +91,20 @@ class StreamProcess(Process):
         self.pcs.clear()
         if self.runner is not None:
             await self.runner.cleanup()
+
+    async def handle_get_clip(self, request: web.Request) -> web.StreamResponse:
+        clip_id = request.query.get("clip_id")
+
+        clip_path = f"./clips/clip_{clip_id}.mp4"
+
+        if not os.path.exists(clip_path):
+            return web.json_response(
+                {"error": f"Clip with ID {clip_id} not found"},
+                status=404,
+            )
+
+        return web.FileResponse(clip_path)
+        
 
     def dict_factory(self, cursor: sqlite.Cursor, row):
         fields = [column[0] for column in cursor.description]

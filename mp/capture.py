@@ -155,7 +155,7 @@ class CaptureProcess(Process):
             end_clip_task = self.storage_task_factory.end_clip(
                 clip_id=self.current_clip_id,
                 ended_at=end_time,
-                trigger=str(self.clip_has_detections)
+                trigger=str(self.clip_detected_classes)
             )
             self.storage_task_queue.put(end_clip_task)  # Send the end clip task to storage
             logger.info(f"Ended clip {self.current_clip_id} at {end_time}")
