@@ -66,7 +66,7 @@ class StreamProcess(Process):
     async def serve(self):
         app = web.Application()
         app.router.add_get("/", self.index)
-        app.router.add_get("/clip", self.handle_get_clip)
+        app.router.add_get("/clip/{clip_id}", self.handle_get_clip)
         app.router.add_get("/clips", self.handle_get_clips_before)
         app.router.add_get("/latest_detections", self.handle_latest_detections)
         app.router.add_get("/websocket/detections", self.handle_detection_websocket)
@@ -93,7 +93,7 @@ class StreamProcess(Process):
             await self.runner.cleanup()
 
     async def handle_get_clip(self, request: web.Request) -> web.StreamResponse:
-        clip_id = request.query.get("clip_id")
+        clip_id = request.match_info.get("clip_id")
 
         clip_path = f"./clips/clip_{clip_id}.mp4"
 
