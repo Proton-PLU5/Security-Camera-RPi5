@@ -98,7 +98,7 @@ class DetectProcess(Process):
 
 
                 with metrics.time("detection_inference_time"):
-                    results = self.model(frame)  # Perform detection on the frame
+                    results = self.model(frame, verbose=False)  # Perform detection on the frame
 
                 # Process results and create tasks for storage
                 detections = []
