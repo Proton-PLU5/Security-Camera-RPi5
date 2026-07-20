@@ -70,8 +70,8 @@ class StreamProcess(Process):
         app.router.add_get("/clip/{clip_id:.*}", self.handle_get_clip)
         app.router.add_get("/clips", self.handle_get_clips_before)
         app.router.add_get("/websocket/detections", self.handle_detection_websocket)
+        app.router.add_get("/pairing/cert", self.handle_cert)
         app.router.add_post("/authenticate", self.handle_authentication)
-
         app.router.add_post("/offer", self.handle_offer)
 
         self.runner = web.AppRunner(app)
@@ -95,8 +95,13 @@ class StreamProcess(Process):
         if self.runner is not None:
             await self.runner.cleanup()
 
-    async def handle_get_detections_for_clip(self, request: web.Request) -> web.Response:
+    async def handle_cert(self, request: web.Request) -> web.FileResponse | web.Response:
+        if not os.path.exists("cert.pem"):
+            return web.json_response({"error": "Cert not available"}, status=500)
+        
+        return web.FileResponse("cert.pem")
 
+    async def handle_get_detections_for_clip(self, request: web.Request) -> web.Response:
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if self.authenticator.validate_token(token) is None:
             return web.json_response({"error": "Invalid or missing token"}, status=401)
