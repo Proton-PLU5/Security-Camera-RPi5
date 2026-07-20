@@ -24,12 +24,26 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
+.continue
+clips
+storage.db
+# ============================================================================
+# Testing and Coverage
+# ============================================================================
+.htmlcov/
+.tox/
+.nosenv/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+cover/
 
-# Virtual environments
-venv/
-env/
-ENV/
-.venv
 
 # IDE
 .vscode/
@@ -54,3 +68,5 @@ Thumbs.db
 *.mov
 recordings/
 footage/
+.continue/mcpServers/new-mcp-server.yaml
+.gitignore
