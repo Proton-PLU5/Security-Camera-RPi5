@@ -7,7 +7,7 @@ import sqlite3 as sqlite
 from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription, MediaStreamTrack, VideoStreamTrack
 from multiprocessing import Process, Queue, Event
 from data.metrics import metrics
-
+from streaming.auth.authentication import Authenticator
 from av import VideoFrame
 import numpy as np
 
@@ -50,6 +50,7 @@ class StreamProcess(Process):
         self.lowres_size = lowres_size
         self.detection_buffer = detection_buffer
         self.stop_event = stop_event
+        self.authenticator = Authenticator(storage_db_path)
 
         self.pcs: set[RTCPeerConnection] = set()
     
@@ -69,8 +70,8 @@ class StreamProcess(Process):
         app.router.add_get("/clip/{clip_id}/detections", self.handle_get_detections_for_clip)
         app.router.add_get("/clip/{clip_id:.*}", self.handle_get_clip)
         app.router.add_get("/clips", self.handle_get_clips_before)
-        app.router.add_get("/latest_detections", self.handle_latest_detections)
         app.router.add_get("/websocket/detections", self.handle_detection_websocket)
+        app.router.add_post("/authenticate", self.handle_authentication)
 
         app.router.add_post("/offer", self.handle_offer)
 
@@ -94,7 +95,11 @@ class StreamProcess(Process):
             await self.runner.cleanup()
 
     async def handle_get_detections_for_clip(self, request: web.Request) -> web.Response:
-        
+
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ")
+        if self.authenticator.validate_token(token) is None:
+            return web.json_response({"error": "Invalid or missing token"}, status=401)
+
         clip_id = request.match_info.get("clip_id")
 
         connection = sqlite.connect(self.storage_db_path, timeout=5.0)
@@ -141,6 +146,11 @@ class StreamProcess(Process):
         return web.json_response(result)
 
     async def handle_get_clip(self, request: web.Request) -> web.StreamResponse:
+
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ")
+        if self.authenticator.validate_token(token) is None:
+            return web.json_response({"error": "Invalid or missing token"}, status=401)
+
         clip_id = request.match_info.get("clip_id")
 
         clip_path = f"./clips/clip_{clip_id}.mp4"
@@ -159,6 +169,11 @@ class StreamProcess(Process):
         return {key: value for key, value in zip(fields, row)}
 
     async def handle_get_clips_before(self, request: web.Request) -> web.Response:
+
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ")
+        if self.authenticator.validate_token(token) is None:
+            return web.json_response({"error": "Invalid or missing token"}, status=401)
+
         if request.query.get("before") is None:
             return web.json_response({"error": "Missing 'before' query parameter"}, status=400)
 
@@ -183,7 +198,12 @@ class StreamProcess(Process):
 
         return web.json_response(clips)
 
-    async def handle_detection_websocket(self, request: web.Request) -> web.WebSocketResponse:
+    async def handle_detection_websocket(self, request: web.Request) -> web.WebSocketResponse | web.Response:
+        
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ")
+        if self.authenticator.validate_token(token) is None:
+            return web.json_response({"error": "Invalid or missing token"}, status=401)
+
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
@@ -202,12 +222,14 @@ class StreamProcess(Process):
 
         return ws
 
-    async def handle_latest_detections(self, request: web.Request) -> web.Response:
-        detections = self.detection_buffer.get()
-        return web.json_response(detections)
-
     async def handle_offer(self, request: web.Request) -> web.Response:
         params = await request.json()
+
+        # Check for valid token
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ")
+        if self.authenticator.validate_token(token) is None:
+            return web.json_response({"error": "Invalid or missing token"}, status=401)
+
         offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
 
         pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=[RTCIceServer(urls=["stun:stun.l.google.com:19302"])]))
@@ -216,7 +238,7 @@ class StreamProcess(Process):
         @pc.on("connectionstatechange")
         async def on_connectionstatechange():
             logging.info(f"Connection state is {pc.connectionState}")
-            if pc.connectionState == "failed":
+            if pc.connectionState == "failed" or pc.connectionState == "closed":
                 await pc.close()
                 self.pcs.discard(pc)
 
@@ -229,6 +251,22 @@ class StreamProcess(Process):
         await pc.setLocalDescription(answer)
 
         return web.json_response({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type})
+    
+    async def handle_authentication(self, request: web.Request) -> web.Response:
+        data = await request.json()
+        username = data.get("username")
+        password = data.get("password")
+
+        if not username or not password:
+            return web.json_response({"error": "Username and password are required"}, status=400)
+
+        is_authenticated = self.authenticator.authenticate(username, password)
+        if not is_authenticated:
+            return web.json_response({"error": "Invalid username or password"}, status=401)
+        
+        token = self.authenticator.generate_token(username)
+
+        return web.json_response({"message": "Authentication successful", "token": token})
 
     async def index(self, request: web.Request) -> web.FileResponse:
         return web.FileResponse("mp/lite_viewer.html")
