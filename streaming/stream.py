@@ -5,12 +5,11 @@ from typing import Tuple
 from aiohttp import web
 import sqlite3 as sqlite
 from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription, MediaStreamTrack, VideoStreamTrack
-from multiprocessing import Process, Queue, Event
+from multiprocessing import Process, Event
 from data.metrics import metrics
 from streaming.auth.authentication import Authenticator
 from av import VideoFrame
-import numpy as np
-
+import ssl
 from capture.capture import CaptureBuffer
 from capture.detect import DetectionBuffer
 
@@ -78,7 +77,9 @@ class StreamProcess(Process):
         self.runner = web.AppRunner(app)
         await self.runner.setup()
 
-        site = web.TCPSite(self.runner, self.host, self.port)
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_context.load_cert_chain(certfile="cert.pem", keyfile="key.pem")
+        site = web.TCPSite(self.runner, self.host, self.port, ssl_context=ssl_context)
         await site.start()
 
         logging.info(f"Stream server started at http://{self.host}:{self.port}")
