@@ -70,3 +70,5 @@ recordings/
 footage/
 .continue/mcpServers/new-mcp-server.yaml
 .gitignore
+cert.pem
+key.pem
