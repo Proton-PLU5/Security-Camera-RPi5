@@ -7,7 +7,7 @@ from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.widgets import RichLog, Static, Input
-
+from multiprocessing import Process
 
 class TextualLogHandler(logging.Handler):
     """
@@ -70,12 +70,9 @@ class VisionApp(App):
     }
     """
 
-    def __init__(self, threads: dict | None = None, **kwargs):
+    def __init__(self, processes: dict[str, Process], **kwargs):
         super().__init__(**kwargs)
-        # passed in from main.py, which owns creating/starting the
-        # actual pipeline threads - the app just reads from this dict
-        # for the status command and the header's live status label.
-        self.threads: dict = threads or {}
+        self.processes: dict[str, Process] = processes
 
     # -----------------------------
     # LIFECYCLE
@@ -107,8 +104,8 @@ class VisionApp(App):
         cpu_percent = psutil.cpu_percent()
         ram = psutil.virtual_memory().percent
 
-        if self.threads:
-            all_alive = all(t.is_alive() for t in self.threads.values())
+        if self.processes:
+            all_alive = all(p.is_alive() for p in self.processes.values())
             status_label, status_style = ("RUNNING", "green") if all_alive else ("DEGRADED", "red")
         else:
             status_label, status_style = ("STARTING", "yellow")
@@ -167,11 +164,11 @@ class VisionApp(App):
         table = Table(title="System Status")
         table.add_column("Component")
         table.add_column("State")
-        if not self.threads:
-            log.write(Text("No threads registered yet.", style="yellow"))
+        if not self.processes:
+            log.write(Text("No processes registered yet.", style="yellow"))
             return
-        for name, t in self.threads.items():
-            state = Text("Running", style="green") if t.is_alive() else Text("Stopped", style="red")
+        for name, p in self.processes.items():
+            state = Text("Running", style="green") if p.is_alive() else Text("Stopped", style="red")
             table.add_row(name.title(), state)
         log.write(table)
 
@@ -179,7 +176,7 @@ class VisionApp(App):
         table = Table(title="Commands")
         table.add_column("Command")
         table.add_column("Description")
-        table.add_row("status", "Show thread status")
+        table.add_row("status", "Show process status")
         table.add_row("metrics", "Display runtime metrics")
         table.add_row("help", "Show this help menu")
         table.add_row("exit", "Shutdown application")
@@ -187,7 +184,7 @@ class VisionApp(App):
         log.write(table)
 
     # -----------------------------
-    # THREAD-SAFE LOGGING API
+    # PROCESS-SAFE LOGGING API
     # -----------------------------
     def log_message(self, message):
         """

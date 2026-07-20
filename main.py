@@ -1,99 +1,99 @@
 import logging
-import ncnn
-from capture.recognition.face_queue import SnapshotAtomicQueue
-from capture.recognition.face_recognition import FaceRecognition, FaceRecognitionThread
-from data.storage import StorageThread
-from capture.capture import CaptureThread
-from capture.mailbox import MailBox
-from capture.detection.detect import DetectionThread, DetectionStore
-from stream.frame_buffer import FrameBuffer
-from stream.webrtc_stream import StreamThread
-from ultralytics import YOLO # type: ignore
-from data.metrics import metrics
-from app.vision_app import VisionApp, TextualLogHandler
-from firmware.config import Config
+from multiprocessing import Event, Lock, Queue, Manager, set_start_method
+import uuid
+from data.config import Config
+from capture.capture import CaptureProcess, CaptureBuffer
+from data.storage import StorageProcess
+from streaming.stream import StreamProcess
+from capture.detect import DetectProcess, DetectionBuffer
+from app.vision_app import TextualLogHandler, VisionApp
+import socket
+from zeroconf import ServiceInfo, Zeroconf
 
-def configure_ncnn():
-    # NCNN THREAD LIMITING
-    _orig_load_param = ncnn.Net.load_param # type: ignore
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(processName)s %(levelname)s %(message)s")
+set_start_method("spawn", force=True)  # Use 'spawn' to avoid issues with OpenCV and PyTorch in child processes
 
-    def _load_param_with_thread_limit(self, path):
-        self.opt.num_threads = 1  # set before weights get packed
-        return _orig_load_param(self, path)
-
-    ncnn.Net.load_param = _load_param_with_thread_limit # type: ignore
-
-def main():    
-    configure_ncnn()
-
-    model = YOLO("./capture/detection/yolo26s_ncnn_model")  # Load the YOLO model
-
+def main():
+    storage_task_queue = Queue()
+    stop_event = Event()
+    lowres_size = (960, 544)  # Width, Height
+    video_size = (1920, 1088)  # Width, Height
+    capture_buffer = CaptureBuffer(shape = (lowres_size[1], lowres_size[0], 3)) # Height, Width, Channels
+    detection_buffer = DetectionBuffer(max_bytes=65536)  # Adjust max_bytes as needed
     config = Config("config.toml")
-    data_base_path = config.getString("database_path", "storage.db")
-    detection_mailbox = MailBox()
-    detection_store = DetectionStore()
-    stream_buffer = FrameBuffer()
-    face_queue = SnapshotAtomicQueue()
-    face_recognition = None
-    face_mailbox = None
 
-    storage_thread = StorageThread(db_path=data_base_path)
-    storage_thread.start()
+    # Set up Zeroconf service for mDNS advertisement
+    device_uuid = config.getString("device_uuid", uuid.uuid4().hex)
+    hostname = socket.gethostname()
+    local_ip = socket.gethostbyname(hostname)
+    camera_port = 8080
 
-    capture_thread = CaptureThread(
-        detection_mailbox=detection_mailbox, 
-        stream_buffer=stream_buffer, 
-        clip_dir=config.getString("clip_directory", "./clips"), 
-        clip_length=config.getInt("clip_length", 10), 
-        storage_thread=storage_thread,
-        detection_store=detection_store
-    )
-    
-    capture_thread.start()
+    service_type = "_camera._tcp.local."
+    service_name = f"{hostname}.{service_type}"
 
-    detection_thread = DetectionThread(
-        mailbox=detection_mailbox, 
-        detection_store=detection_store, 
-        model=model, 
-        storage_thread=storage_thread,
-        face_queue=face_queue)
-    detection_thread.start()
-
-    face_recognition_thread = None
-
-    if config.getBoolean("enable_face_recognition", True) == True:
-        face_recognition = FaceRecognition(config)
-
-        face_recognition_thread = FaceRecognitionThread(
-            queue=face_queue,
-            face_recognition=face_recognition,
-            storage_thread=storage_thread,
-            face_mailbox=face_mailbox
-        )
-        face_recognition_thread.start()
-
-    stream_thread = StreamThread(
-        buffer=stream_buffer,
-        storage_db_path=data_base_path,
-        detection_store=detection_store,
-        config=config,
-        host=config.getString("stream_host", "0.0.0.0"),
-        port=config.getInt("stream_port", 8080),
-        lowres_size=(config.getInt("stream_width", 960), config.getInt("stream_height", 540)),
-        face_recognition=face_recognition,
-        face_mailbox=face_mailbox
-    )
-    stream_thread.start()
-
-    threads = {
-        "capture": capture_thread,
-        "detection": detection_thread,
-        "stream": stream_thread,
-        "storage": storage_thread
+    properties = {
+        "id": device_uuid,
+        "port": str(camera_port),
+        "version": "1.0.0",
     }
 
-    # Start the TUI application
-    app = VisionApp(threads=threads)
+    info = ServiceInfo(
+        service_type,
+        service_name,
+        addresses=[socket.inet_aton(local_ip)],
+        port=camera_port,
+        properties=properties,
+        server=f"{hostname}.local.",
+    )
+
+    zeroconf = Zeroconf()
+    zeroconf.register_service(info)
+
+    storage_process = StorageProcess(storage_task_queue, stop_event, db_path='storage.db')
+
+    capture_process = CaptureProcess(
+        storage_task_queue=storage_task_queue,
+        stop_event=stop_event,
+        db_path='storage.db',
+        capture_buffer=capture_buffer,
+        lowres_size=lowres_size,
+        video_size=video_size,
+        clip_dir='./clips',
+        detection_buffer=detection_buffer,
+    )
+
+    detection_process = DetectProcess(
+        stop_event=stop_event,
+        capture_buffer=capture_buffer,
+        storage_task_queue=storage_task_queue,
+        detection_buffer=detection_buffer, 
+        lowres_size=lowres_size
+    )
+
+    stream_process = StreamProcess(
+        buffer=capture_buffer,
+        detection_buffer=detection_buffer,
+        storage_db_path='storage.db',
+        stop_event=stop_event,
+        port=camera_port,
+        )
+
+    storage_process.start()
+    capture_process.start()
+    detection_process.start()
+    stream_process.start()
+
+    processes = {
+        "capture": capture_process,
+        "detection": detection_process,
+        "stream": stream_process,
+        "storage": storage_process
+    }
+
+    """
+    app = VisionApp(
+        processes=processes
+    )
 
     # Route stdlib logging into the app's log widget instead of real
     # stdout/stderr (which the full-screen app owns and would corrupt).
@@ -105,35 +105,40 @@ def main():
     file_handler.setFormatter(
         logging.Formatter("%(asctime)s [%(threadName)s] %(name)s: %(message)s")
     )
- 
+
     tui_handler = TextualLogHandler(app)
     tui_handler.setLevel(logging.INFO)
     tui_handler.setFormatter(logging.Formatter("[%(threadName)s] %(name)s: %(message)s"))
- 
+
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.handlers = [file_handler, tui_handler]
- 
+    """
+  
     try:
-        app.run()
+        while True:
+            # Main loop can be used to monitor processes or handle other tasks
+            for name, process in processes.items():
+                if not process.is_alive():
+                    logging.error(f"{name} process has stopped unexpectedly.")
+                    stop_event.set()  # Signal all processes to stop
+                    break
+            if stop_event.is_set():
+                break
+    except KeyboardInterrupt:
+        logging.info("KeyboardInterrupt received. Stopping all processes...")
+        stop_event.set()  # Signal all processes to stop
     finally:
-        config.save_configurations()
-        capture_thread.stop()
-        capture_thread.join()
-        detection_thread.stop()
-        detection_thread.join()
+        zeroconf.unregister_service(info)
+        zeroconf.close()
+        stop_event.set()  # Signal the storage process to stop
+        storage_process.join()  # Wait for the storage process to finish
+        capture_process.join()  # Wait for the capture process to finish
+        detection_process.join()  # Wait for the detection process to finish
+        stream_process.join()  # Wait for the stream process to finish
+        capture_buffer.close()  # Close the shared buffer
 
-        if face_recognition_thread is not None:
-            face_queue.shutdown()
-            face_recognition_thread.stop()
-            face_recognition_thread.join()
-
-        stream_thread.stop()
-        stream_thread.join()
-        storage_thread.stop()
-        storage_thread.join()
-
-        
+        config.save_configurations()  # Save configurations to the config file
 
 if __name__ == "__main__":
     main()

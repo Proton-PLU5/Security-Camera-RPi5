@@ -11,8 +11,8 @@ from data.metrics import metrics
 from av import VideoFrame
 import numpy as np
 
-from mp.capture import CaptureBuffer
-from mp.detect import DetectionBuffer
+from capture.capture import CaptureBuffer
+from capture.detect import DetectionBuffer
 
 class CameraVideoTrack(VideoStreamTrack):
     def __init__(self, buffer: CaptureBuffer, lowres_size: Tuple[int, int] = (960, 540)):

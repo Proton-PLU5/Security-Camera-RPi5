@@ -1,7 +1,7 @@
 from multiprocessing import Process, Event, Queue
-from mp.capture import CaptureBuffer
-from mp.detection_buffer import DetectionBuffer
-from mp.storage import Task, TaskFactory
+from capture.capture import CaptureBuffer
+from capture.detection_buffer import DetectionBuffer
+from data.storage import Task, TaskFactory
 from ultralytics import YOLO # type: ignore
 from data.metrics import metrics
 import ncnn
@@ -14,7 +14,8 @@ class DetectProcess(Process):
                  capture_buffer : CaptureBuffer,
                  storage_task_queue : "Queue[Task]",
                  detection_buffer : DetectionBuffer,
-                 lowres_size: tuple[int, int] = (960, 544)
+                 lowres_size: tuple[int, int] = (960, 544),
+                 model_path: str = "./capture/model/yolo26s_ncnn_model"
                  ):
         super().__init__(daemon=True)
         self.stop_event = stop_event
@@ -22,6 +23,7 @@ class DetectProcess(Process):
         self.storage_task_queue = storage_task_queue
         self.detection_buffer = detection_buffer
         self.lowres_size = lowres_size
+        self.model_path = model_path
 
     def configure_ncnn(self):
         # NCNN THREAD LIMITING
@@ -35,7 +37,7 @@ class DetectProcess(Process):
 
     def run(self):
         self.configure_ncnn()
-        self.model = YOLO("./capture/detection/yolo26s_ncnn_model")  # Load the YOLO model  
+        self.model = YOLO(self.model_path)  # Load the YOLO model
         self.task_factory = TaskFactory()
         
         logger = logging.getLogger(__name__)

@@ -6,11 +6,11 @@ from typing import Optional
 import cv2
 import numpy as np
 import face_recognition
-from capture.mailbox import MailBox
+from capture.mailbox import MailBox # type: ignore
 from capture.recognition.face_queue import SnapshotAtomicQueue
 from data.metrics import metrics
-from data.storage import StorageThread
-from firmware.config import Config
+from data.storage import StorageThread # type: ignore
+from data.config import Config
 import pickle
 import os
 import logging
