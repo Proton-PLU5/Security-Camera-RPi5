@@ -90,11 +90,10 @@ class StorageProcess(Process):
                             name TEXT NOT NULL
                         )''')
         
-        cursor.execute('''CREATE TABLE IF NOT EXISTS users (
+        cursor.execute('''CREATE TABLE IF NOT EXISTS devices (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            username TEXT NOT NULL UNIQUE,
-                            password TEXT NOT NULL,
-                            permission_level INTEGER NOT NULL DEFAULT 0,
+                            pairing_secret TEXT NOT NULL UNIQUE,
+                            access_level INTEGER NOT NULL DEFAULT 0,
                             created_at DATETIME NOT NULL DEFAULT (datetime('now'))
                         )''')
         

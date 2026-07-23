@@ -1,5 +1,5 @@
 import logging
-from multiprocessing import Event, Lock, Queue, Manager, set_start_method
+from multiprocessing import Event, Lock, Queue, Manager, set_start_method, Value
 import uuid
 from data.config import Config
 from capture.capture import CaptureProcess, CaptureBuffer
@@ -21,6 +21,7 @@ def main():
     capture_buffer = CaptureBuffer(shape = (lowres_size[1], lowres_size[0], 3)) # Height, Width, Channels
     detection_buffer = DetectionBuffer(max_bytes=65536)  # Adjust max_bytes as needed
     config = Config("config.toml")
+    pairing_mode_enabled = Value('b', True)
 
     # Set up Zeroconf service for mDNS advertisement
     device_uuid = config.getString("device_uuid", uuid.uuid4().hex)
@@ -76,7 +77,8 @@ def main():
         storage_db_path='storage.db',
         stop_event=stop_event,
         port=camera_port,
-        )
+        pairing_mode=pairing_mode_enabled
+    )
 
     storage_process.start()
     capture_process.start()

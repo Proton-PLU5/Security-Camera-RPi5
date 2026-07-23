@@ -5,13 +5,14 @@ from typing import Tuple
 from aiohttp import web
 import sqlite3 as sqlite
 from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription, MediaStreamTrack, VideoStreamTrack
-from multiprocessing import Process, Event
+from multiprocessing import Process, Event, Value
 from data.metrics import metrics
 from streaming.auth.authentication import Authenticator
 from av import VideoFrame
 import ssl
 from capture.capture import CaptureBuffer
 from capture.detect import DetectionBuffer
+from data.config import Config
 
 class CameraVideoTrack(VideoStreamTrack):
     def __init__(self, buffer: CaptureBuffer, lowres_size: Tuple[int, int] = (960, 540)):
@@ -37,6 +38,7 @@ class StreamProcess(Process):
                  detection_buffer: DetectionBuffer,
                  storage_db_path: str, 
                  stop_event: Event, # type: ignore
+                 pairing_mode: Value, # type: ignore
                  host: str = "0.0.0.0",
                  port: int = 8080,
                  lowres_size: tuple[int, int] = (960, 544),
@@ -50,6 +52,7 @@ class StreamProcess(Process):
         self.detection_buffer = detection_buffer
         self.stop_event = stop_event
         self.authenticator = Authenticator(storage_db_path)
+        self.pairing_mode = pairing_mode
 
         self.pcs: set[RTCPeerConnection] = set()
     
@@ -70,8 +73,9 @@ class StreamProcess(Process):
         app.router.add_get("/clip/{clip_id:.*}", self.handle_get_clip)
         app.router.add_get("/clips", self.handle_get_clips_before)
         app.router.add_get("/websocket/detections", self.handle_detection_websocket)
-        app.router.add_get("/pairing/cert", self.handle_cert)
-        app.router.add_post("/authenticate", self.handle_authentication)
+        app.router.add_get("/pair/cert", self.handle_cert)
+        app.router.add_get("/pair/token", self.handle_pair_token)
+        app.router.add_get("/pair", self.handle_pair)
         app.router.add_post("/offer", self.handle_offer)
 
         self.runner = web.AppRunner(app)
@@ -103,7 +107,7 @@ class StreamProcess(Process):
 
     async def handle_get_detections_for_clip(self, request: web.Request) -> web.Response:
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
-        if self.authenticator.validate_token(token) is None:
+        if not self.authenticator.validate_session_token(token):
             return web.json_response({"error": "Invalid or missing token"}, status=401)
 
         clip_id = request.match_info.get("clip_id")
@@ -154,7 +158,7 @@ class StreamProcess(Process):
     async def handle_get_clip(self, request: web.Request) -> web.StreamResponse:
 
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
-        if self.authenticator.validate_token(token) is None:
+        if not self.authenticator.validate_session_token(token):
             return web.json_response({"error": "Invalid or missing token"}, status=401)
 
         clip_id = request.match_info.get("clip_id")
@@ -169,7 +173,6 @@ class StreamProcess(Process):
 
         return web.FileResponse(clip_path)
         
-
     def dict_factory(self, cursor: sqlite.Cursor, row):
         fields = [column[0] for column in cursor.description]
         return {key: value for key, value in zip(fields, row)}
@@ -177,7 +180,7 @@ class StreamProcess(Process):
     async def handle_get_clips_before(self, request: web.Request) -> web.Response:
 
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
-        if self.authenticator.validate_token(token) is None:
+        if not self.authenticator.validate_session_token(token):
             return web.json_response({"error": "Invalid or missing token"}, status=401)
 
         if request.query.get("before") is None:
@@ -207,7 +210,7 @@ class StreamProcess(Process):
     async def handle_detection_websocket(self, request: web.Request) -> web.WebSocketResponse | web.Response:
         
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
-        if self.authenticator.validate_token(token) is None:
+        if not self.authenticator.validate_session_token(token):
             return web.json_response({"error": "Invalid or missing token"}, status=401)
 
         ws = web.WebSocketResponse()
@@ -233,7 +236,7 @@ class StreamProcess(Process):
 
         # Check for valid token
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
-        if self.authenticator.validate_token(token) is None:
+        if not self.authenticator.validate_session_token(token):
             return web.json_response({"error": "Invalid or missing token"}, status=401)
 
         offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
@@ -258,21 +261,24 @@ class StreamProcess(Process):
 
         return web.json_response({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type})
     
-    async def handle_authentication(self, request: web.Request) -> web.Response:
-        data = await request.json()
-        username = data.get("username")
-        password = data.get("password")
+    async def handle_pair(self, request: web.Request) -> web.Response:
+        if not self.pairing_mode.value:
+            return web.json_response({"error": "Pairing mode is disabled"}, status=403)
 
-        if not username or not password:
-            return web.json_response({"error": "Username and password are required"}, status=400)
+        # Generate a new persistent pairing token for the device
+        pairing_secret = self.authenticator.generate_pairing_secret()
 
-        is_authenticated = self.authenticator.authenticate(username, password)
-        if not is_authenticated:
-            return web.json_response({"error": "Invalid username or password"}, status=401)
-        
-        token = self.authenticator.generate_token(username)
+        return web.json_response({"pairing_secret": pairing_secret})
+    
+    async def handle_pair_token(self, request: web.Request) -> web.Response:
+        pairing_secret = request.headers.get("Authorization", "").removeprefix("Bearer ")
+        if not pairing_secret:
+            return web.json_response({"error": "Missing pairing secret"}, status=400)
 
-        return web.json_response({"message": "Authentication successful", "token": token})
+        # Generate a new persistent pairing token for the device
+        token = self.authenticator.generate_session_token(pairing_secret)
+
+        return web.json_response({"token": token}, status=200)
 
     async def index(self, request: web.Request) -> web.FileResponse:
         return web.FileResponse("mp/lite_viewer.html")

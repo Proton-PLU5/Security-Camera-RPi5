@@ -1,6 +1,7 @@
 import logging
 import sqlite3
 import bcrypt
+import secrets
 from streaming.auth.tickets import TokenService
 
 class Authenticator():
@@ -8,40 +9,30 @@ class Authenticator():
         self.database_path = database_path
         self.token_service = TokenService()
 
-    def authenticate(self, username: str, password: str) -> bool:
+    def generate_pairing_secret(self) -> str:
+        pairing_secret = secrets.token_urlsafe(32)
+
         with sqlite3.connect(self.database_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
-            result = cursor.fetchone()
-
-            if result is None:
-                bcrypt.checkpw(password.encode(), bcrypt.gensalt()) # Perform a dummy hash to mitigate timing attacks
-                return False
             
-            stored_password = result[0]
-            return bcrypt.checkpw(password.encode(), stored_password.encode())
-        
-    def generate_token(self, user_id: str) -> str:
-        return self.token_service.generate_token(user_id)
+            cursor.execute("INSERT INTO devices (pairing_secret) VALUES (?)", (pairing_secret,))
+            conn.commit()
 
-    def invalidate_token(self, token: str):
+        return pairing_secret
+    
+    def generate_session_token(self, pairing_secret: str) -> str:
+        return self.token_service.generate_token(pairing_secret)
+
+    def validate_session_token(self, token: str) -> bool:
+        return self.token_service.validate_token(token)
+
+    def invalidate_session_token(self, token: str):
         self.token_service.invalidate_token(token)
 
-    def validate_token(self, token: str):
-        return self.token_service.validate_token(token)
-        
-    def create_user(self, username: str, password: str) -> bool:
+    def invalidate_pairing_secret(self, pairing_secret: str):
         with sqlite3.connect(self.database_path) as conn:
             cursor = conn.cursor()
-            try:
-                hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-                cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, hashed_password))
-                conn.commit()
-                return True
-
-            except sqlite3.IntegrityError:
-                logging.error(f"User {username} already exists.")
-                return False
-            except sqlite3.Error as e:
-                logging.error(f"Database error: {e}")
-                return False
+            cursor.execute("DELETE FROM devices WHERE pairing_secret = ?", (pairing_secret,))
+            conn.commit()
+        
+        self.token_service.invalidate_token(pairing_secret)
