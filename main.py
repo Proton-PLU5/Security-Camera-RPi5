@@ -6,7 +6,6 @@ from capture.capture import CaptureProcess, CaptureBuffer
 from data.storage import StorageProcess
 from streaming.stream import StreamProcess
 from capture.detect import DetectProcess, DetectionBuffer
-from app.vision_app import TextualLogHandler, VisionApp
 import socket
 from zeroconf import ServiceInfo, Zeroconf
 

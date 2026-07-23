@@ -51,12 +51,12 @@ class StreamProcess(Process):
         self.lowres_size = lowres_size
         self.detection_buffer = detection_buffer
         self.stop_event = stop_event
-        self.authenticator = Authenticator(storage_db_path)
         self.pairing_mode = pairing_mode
 
         self.pcs: set[RTCPeerConnection] = set()
     
     def run(self):
+        self.authenticator = Authenticator(self.storage_db_path)
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
