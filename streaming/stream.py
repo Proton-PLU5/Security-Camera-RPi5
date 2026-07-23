@@ -76,7 +76,7 @@ class StreamProcess(Process):
         app.router.add_get("/clips", self.handle_get_clips_before)
         app.router.add_get("/websocket/detections", self.handle_detection_websocket)
         app.router.add_get("/pair/cert", self.handle_cert)
-        app.router.add_get("/pair/token", self.handle_pair_token)
+        app.router.add_post("/pair/token", self.handle_pair_token)
         app.router.add_get("/pair", self.handle_pair)
         app.router.add_post("/offer", self.handle_offer)
 
