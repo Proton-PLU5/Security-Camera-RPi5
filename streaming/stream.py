@@ -81,9 +81,7 @@ class StreamProcess(Process):
         self.runner = web.AppRunner(app)
         await self.runner.setup()
 
-        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        ssl_context.load_cert_chain(certfile="cert.pem", keyfile="key.pem")
-        site = web.TCPSite(self.runner, self.host, self.port, ssl_context=ssl_context)
+        site = web.TCPSite(self.runner, self.host, self.port)
         await site.start()
 
         logging.info(f"Stream server started at http://{self.host}:{self.port}")
