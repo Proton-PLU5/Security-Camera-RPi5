@@ -42,6 +42,7 @@ class StreamProcess(Process):
                  host: str = "0.0.0.0",
                  port: int = 8080,
                  lowres_size: tuple[int, int] = (960, 544),
+                 clips_dir: str = "./clips"
                 ):
         super().__init__(daemon=True)
         self.buffer = buffer
@@ -52,6 +53,7 @@ class StreamProcess(Process):
         self.detection_buffer = detection_buffer
         self.stop_event = stop_event
         self.pairing_mode = pairing_mode
+        self.clips_dir = clips_dir
 
         self.pcs: set[RTCPeerConnection] = set()
     
@@ -161,7 +163,7 @@ class StreamProcess(Process):
 
         clip_id = request.match_info.get("clip_id")
 
-        clip_path = f"./clips/clip_{clip_id}.mp4"
+        clip_path = f"{self.clips_dir}/clip_{clip_id}.mp4"
 
         if not os.path.exists(clip_path):
             return web.json_response(
