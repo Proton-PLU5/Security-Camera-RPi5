@@ -1,35 +1,44 @@
 import secrets
-import redis
+import time
 
 class TokenService:
-    def __init__(self, expiry=3600, redis_host='localhost', redis_port=6379, redis_db=0):
-        self.redis_client = redis.StrictRedis(host=redis_host, port=redis_port, db=redis_db, decode_responses=True)
+    def __init__(self, expiry=3600):
         self.expiry = expiry
+        self._tokens = {}   # token -> (pairing_secret, expires_at)
+        self._devices = {}  # pairing_secret -> (token, expires_at)
+
+    def _now(self):
+        return time.time()
 
     def generate_token(self, pairing_secret: str) -> str:
-        old_token = self.redis_client.get(f"device:{pairing_secret}")
+        old_token, _ = self._devices.get(pairing_secret, (None, None))
         if old_token:
-            self.redis_client.delete(old_token)
+            self._tokens.pop(old_token, None)
 
-        token = str(secrets.token_urlsafe(32))
-        self.redis_client.set(token, pairing_secret, ex=self.expiry)
-        self.redis_client.set(f"device:{pairing_secret}", token, ex=self.expiry)
+        token = secrets.token_urlsafe(32)
+        expires_at = self._now() + self.expiry
+        self._tokens[token] = (pairing_secret, expires_at)
+        self._devices[pairing_secret] = (token, expires_at)
         return token
 
     def invalidate_token(self, token: str):
-        pairing_secret = self.redis_client.get(token)
-        if pairing_secret:
-            self.redis_client.delete(f"device:{pairing_secret}")
-        self.redis_client.delete(token)
+        entry = self._tokens.pop(token, None)
+        if entry:
+            pairing_secret, _ = entry
+            self._devices.pop(pairing_secret, None)
 
     def validate_token(self, token: str) -> bool:
-        pairing_secret = self.redis_client.get(token)
-        
-        # If the token is valid, refresh its expiry time
-        if pairing_secret:
-            self.redis_client.expire(token, self.expiry)
-            self.redis_client.expire(f"device:{pairing_secret}", self.expiry)
-            return True
+        entry = self._tokens.get(token)
+        if not entry:
+            return False
 
-        return False
-        
+        pairing_secret, expires_at = entry
+        if self._now() > expires_at:
+            self._tokens.pop(token, None)
+            self._devices.pop(pairing_secret, None)
+            return False
+
+        new_expiry = self._now() + self.expiry
+        self._tokens[token] = (pairing_secret, new_expiry)
+        self._devices[pairing_secret] = (token, new_expiry)
+        return True
