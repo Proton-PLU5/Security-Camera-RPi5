@@ -1,36 +1,14 @@
 import asyncio
 import logging
 import os
-from typing import Tuple
 from aiohttp import web
 import sqlite3 as sqlite
-from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription, MediaStreamTrack, VideoStreamTrack
+from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription
 from multiprocessing import Process, Event, Value
-from data.metrics import metrics
 from streaming.auth.authentication import Authenticator
-from av import VideoFrame
-import ssl
 from capture.capture import CaptureBuffer
 from capture.detect import DetectionBuffer
-from data.config import Config
-
-class CameraVideoTrack(VideoStreamTrack):
-    def __init__(self, buffer: CaptureBuffer, lowres_size: Tuple[int, int] = (960, 540)):
-        super().__init__()
-        self.buffer = buffer
-        self.lowres_size = lowres_size
-
-    async def recv(self) -> VideoFrame:
-        with metrics.time("stream_receive"):
-            frame, clip_id = self.buffer.get()
-
-            if frame is None:
-                return await self.recv()
-
-            video_frame = VideoFrame.from_ndarray(frame, format='bgr24')
-            video_frame.pts, video_frame.time_base = await self.next_timestamp()
-
-            return video_frame
+from streaming.camera_video_track import CameraVideoTrack
 
 class StreamProcess(Process):
     def __init__(self, 
