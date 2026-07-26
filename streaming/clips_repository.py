@@ -30,11 +30,14 @@ class ClipsRepository:
         finally:
             conn.close()
 
+    def dict_factory(self, cursor: sqlite.Cursor, row):
+        fields = [column[0] for column in cursor.description]
+        return {key: value for key, value in zip(fields, row)}
+
     def get_clips_before(self, before_timestamp_ms: float):
         conn = sqlite.connect(self.db_path)
-        conn.row_factory = lambda cur, row: {
-            col[0]: val for col, val in zip(cur.description, row)
-        }
+        conn.row_factory = self.dict_factory
+        
         try:
             cur = conn.cursor()
             cur.execute("SELECT * FROM clips WHERE ended_at < ?", (before_timestamp_ms,))

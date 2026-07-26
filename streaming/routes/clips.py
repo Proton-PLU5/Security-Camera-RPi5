@@ -48,3 +48,15 @@ async def get_clip(request: web.Request) -> web.StreamResponse:
 
     return web.FileResponse(clip_path)
 
+@routes.get("/clips")
+async def get_clips_before(request: web.Request) -> web.Response:
+    if request.query.get("before") is None:
+        return web.json_response({"error": "Missing 'before' query parameter"}, status=400)
+
+    repo = request.app["clips_repository"]
+
+    before_ms = float(request.query.get("before", 0)) * 1000
+    clips = repo.get_clips_before(before_ms)
+
+    return web.json_response(clips)
+
