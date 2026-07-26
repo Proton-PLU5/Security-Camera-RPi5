@@ -1,5 +1,8 @@
 import sqlite3 as sqlite
 
+'''
+    Dedicated repository class for handling database operations related to clips and detections.
+'''
 class ClipsRepository:
     def __init__(self, db_path: str):
         self.db_path = db_path
