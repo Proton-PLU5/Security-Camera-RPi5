@@ -4,7 +4,7 @@ import uuid
 from data.config import Config
 from capture.capture import CaptureProcess, CaptureBuffer
 from data.storage import StorageProcess
-from streaming.stream import StreamProcess
+from streaming.stream_process import StreamProcess
 from capture.detect import DetectProcess, DetectionBuffer
 import socket
 from zeroconf import ServiceInfo, Zeroconf
