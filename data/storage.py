@@ -90,6 +90,13 @@ class StorageProcess(Process):
                             name TEXT NOT NULL
                         )''')
         
+        cursor.execute('''CREATE TABLE IF NOT EXISTS devices (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            pairing_secret TEXT NOT NULL UNIQUE,
+                            access_level INTEGER NOT NULL DEFAULT 0,
+                            created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+                        )''')
+        
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_detections_clip_id_ts ON detections (clip_id, timestamp)''')
 
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_clips_id ON clips (id)''')

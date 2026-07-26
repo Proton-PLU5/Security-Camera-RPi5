@@ -1,36 +1,14 @@
 import asyncio
 import logging
 import os
-from typing import Tuple
 from aiohttp import web
 import sqlite3 as sqlite
-from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription, MediaStreamTrack, VideoStreamTrack
-from multiprocessing import Process, Queue, Event
-from data.metrics import metrics
-
-from av import VideoFrame
-import numpy as np
-
+from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription
+from multiprocessing import Process, Event, Value
+from streaming.auth.authentication import Authenticator
 from capture.capture import CaptureBuffer
 from capture.detect import DetectionBuffer
-
-class CameraVideoTrack(VideoStreamTrack):
-    def __init__(self, buffer: CaptureBuffer, lowres_size: Tuple[int, int] = (960, 540)):
-        super().__init__()
-        self.buffer = buffer
-        self.lowres_size = lowres_size
-
-    async def recv(self) -> VideoFrame:
-        with metrics.time("stream_receive"):
-            frame, clip_id = self.buffer.get()
-
-            if frame is None:
-                return await self.recv()
-
-            video_frame = VideoFrame.from_ndarray(frame, format='bgr24')
-            video_frame.pts, video_frame.time_base = await self.next_timestamp()
-
-            return video_frame
+from streaming.camera_video_track import CameraVideoTrack
 
 class StreamProcess(Process):
     def __init__(self, 
@@ -38,9 +16,11 @@ class StreamProcess(Process):
                  detection_buffer: DetectionBuffer,
                  storage_db_path: str, 
                  stop_event: Event, # type: ignore
+                 pairing_mode: Value, # type: ignore
                  host: str = "0.0.0.0",
                  port: int = 8080,
                  lowres_size: tuple[int, int] = (960, 544),
+                 clips_dir: str = "./clips"
                 ):
         super().__init__(daemon=True)
         self.buffer = buffer
@@ -50,10 +30,13 @@ class StreamProcess(Process):
         self.lowres_size = lowres_size
         self.detection_buffer = detection_buffer
         self.stop_event = stop_event
+        self.pairing_mode = pairing_mode
+        self.clips_dir = clips_dir
 
         self.pcs: set[RTCPeerConnection] = set()
     
     def run(self):
+        self.authenticator = Authenticator(self.storage_db_path)
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
@@ -69,9 +52,10 @@ class StreamProcess(Process):
         app.router.add_get("/clip/{clip_id}/detections", self.handle_get_detections_for_clip)
         app.router.add_get("/clip/{clip_id:.*}", self.handle_get_clip)
         app.router.add_get("/clips", self.handle_get_clips_before)
-        app.router.add_get("/latest_detections", self.handle_latest_detections)
         app.router.add_get("/websocket/detections", self.handle_detection_websocket)
-
+        app.router.add_get("/pair/cert", self.handle_cert)
+        app.router.add_post("/pair/token", self.handle_pair_token)
+        app.router.add_get("/pair", self.handle_pair)
         app.router.add_post("/offer", self.handle_offer)
 
         self.runner = web.AppRunner(app)
@@ -93,8 +77,17 @@ class StreamProcess(Process):
         if self.runner is not None:
             await self.runner.cleanup()
 
-    async def handle_get_detections_for_clip(self, request: web.Request) -> web.Response:
+    async def handle_cert(self, request: web.Request) -> web.FileResponse | web.Response:
+        if not os.path.exists("cert.pem"):
+            return web.json_response({"error": "Cert not available"}, status=500)
         
+        return web.FileResponse("cert.pem")
+
+    async def handle_get_detections_for_clip(self, request: web.Request) -> web.Response:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ")
+        if not self.authenticator.validate_session_token(token):
+            return web.json_response({"error": "Invalid or missing token"}, status=401)
+
         clip_id = request.match_info.get("clip_id")
 
         connection = sqlite.connect(self.storage_db_path, timeout=5.0)
@@ -141,9 +134,14 @@ class StreamProcess(Process):
         return web.json_response(result)
 
     async def handle_get_clip(self, request: web.Request) -> web.StreamResponse:
+
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ")
+        if not self.authenticator.validate_session_token(token):
+            return web.json_response({"error": "Invalid or missing token"}, status=401)
+
         clip_id = request.match_info.get("clip_id")
 
-        clip_path = f"./clips/clip_{clip_id}.mp4"
+        clip_path = f"{self.clips_dir}/clip_{clip_id}.mp4"
 
         if not os.path.exists(clip_path):
             return web.json_response(
@@ -153,12 +151,16 @@ class StreamProcess(Process):
 
         return web.FileResponse(clip_path)
         
-
     def dict_factory(self, cursor: sqlite.Cursor, row):
         fields = [column[0] for column in cursor.description]
         return {key: value for key, value in zip(fields, row)}
 
     async def handle_get_clips_before(self, request: web.Request) -> web.Response:
+
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ")
+        if not self.authenticator.validate_session_token(token):
+            return web.json_response({"error": "Invalid or missing token"}, status=401)
+
         if request.query.get("before") is None:
             return web.json_response({"error": "Missing 'before' query parameter"}, status=400)
 
@@ -183,7 +185,12 @@ class StreamProcess(Process):
 
         return web.json_response(clips)
 
-    async def handle_detection_websocket(self, request: web.Request) -> web.WebSocketResponse:
+    async def handle_detection_websocket(self, request: web.Request) -> web.WebSocketResponse | web.Response:
+        
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ")
+        if not self.authenticator.validate_session_token(token):
+            return web.json_response({"error": "Invalid or missing token"}, status=401)
+
         ws = web.WebSocketResponse()
         await ws.prepare(request)
 
@@ -202,12 +209,14 @@ class StreamProcess(Process):
 
         return ws
 
-    async def handle_latest_detections(self, request: web.Request) -> web.Response:
-        detections = self.detection_buffer.get()
-        return web.json_response(detections)
-
     async def handle_offer(self, request: web.Request) -> web.Response:
         params = await request.json()
+
+        # Check for valid token
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ")
+        if not self.authenticator.validate_session_token(token):
+            return web.json_response({"error": "Invalid or missing token"}, status=401)
+
         offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
 
         pc = RTCPeerConnection(configuration=RTCConfiguration(iceServers=[RTCIceServer(urls=["stun:stun.l.google.com:19302"])]))
@@ -216,7 +225,7 @@ class StreamProcess(Process):
         @pc.on("connectionstatechange")
         async def on_connectionstatechange():
             logging.info(f"Connection state is {pc.connectionState}")
-            if pc.connectionState == "failed":
+            if pc.connectionState == "failed" or pc.connectionState == "closed":
                 await pc.close()
                 self.pcs.discard(pc)
 
@@ -229,6 +238,25 @@ class StreamProcess(Process):
         await pc.setLocalDescription(answer)
 
         return web.json_response({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type})
+    
+    async def handle_pair(self, request: web.Request) -> web.Response:
+        if not self.pairing_mode.value:
+            return web.json_response({"error": "Pairing mode is disabled"}, status=403)
+
+        # Generate a new persistent pairing token for the device
+        pairing_secret = self.authenticator.generate_pairing_secret()
+
+        return web.json_response({"pairing_secret": pairing_secret})
+    
+    async def handle_pair_token(self, request: web.Request) -> web.Response:
+        pairing_secret = request.headers.get("Authorization", "").removeprefix("Bearer ")
+        if not pairing_secret:
+            return web.json_response({"error": "Missing pairing secret"}, status=400)
+
+        # Generate a new persistent pairing token for the device
+        token = self.authenticator.generate_session_token(pairing_secret)
+
+        return web.json_response({"token": token}, status=200)
 
     async def index(self, request: web.Request) -> web.FileResponse:
         return web.FileResponse("mp/lite_viewer.html")
