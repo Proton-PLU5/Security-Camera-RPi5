@@ -10,6 +10,7 @@ from data.storage import Task, TaskFactory
 from picamera2 import Picamera2
 from picamera2.encoders import H264Encoder
 from picamera2.outputs import FfmpegOutput
+import sqlite3
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,8 @@ class CaptureProcess(Process):
                  clip_length: int = 10,
                  video_size: tuple[int, int] = (1920, 1080),
                  lowres_size: tuple[int, int] = (960, 544),
-                 allowed_triggers: set[str] = {'person'}
+                 allowed_triggers: set[str] = {'person'},
+                 max_clips: int = 100
                  ):
         super().__init__(daemon=True)
         self.storage_task_queue = storage_task_queue
@@ -41,11 +43,13 @@ class CaptureProcess(Process):
         self.clip_detected_classes = set()  # Track the classes detected in the current clip
         self.pending_start_task = None  # Store the pending start task if a clip is not yet started
         self.current_filename = None  # Track the current filename for the clip
-        
+        self.max_clips = max_clips  # Maximum number of clips to retain in the database
+
         self.current_clip_start = 0.0
         self.current_clip_id = None
         self.detection_task_buffer = []
     def run(self):
+
         # Setup
         self.camera = Picamera2()
         self.storage_task_factory : TaskFactory = TaskFactory()
@@ -162,6 +166,7 @@ class CaptureProcess(Process):
 
             # Create an asynchronous task to process the detection tasks for this clip
             self.process_detection_tasks()
+            self.handle_clips_count()
         else:
             logger.info(f"Clip {self.current_clip_id} ended without detections, not saving to storage.")
             try:
@@ -175,6 +180,28 @@ class CaptureProcess(Process):
         self.current_filename = None  # Reset the current filename
         self.current_clip_id = None  # Reset the current clip ID
         self.clip_detected_classes.clear()  # Clear the set of detected classes
+
+    def handle_clips_count(self):
+        try:
+            with sqlite3.connect(self.db_path, timeout=5.0) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM clips")
+                count = cursor.fetchone()[0]
+
+                if count < self.max_clips:
+                    return
+
+                cursor.execute("SELECT id, file_path FROM clips ORDER BY created_at ASC LIMIT 1")
+                row = cursor.fetchone()
+                if row is None:
+                    return
+                oldest_id, oldest_path = row
+
+                cursor.execute("DELETE FROM clips WHERE id = ?", (oldest_id,))
+                if oldest_path and os.path.exists(oldest_path):
+                    os.remove(oldest_path)
+        except Exception as e:
+            logger.error(f"Error occurred while handling clips count: {e}", exc_info=True)
 
     def process_detection_tasks(self):
         if self.current_clip_id is None:
