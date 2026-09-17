@@ -57,6 +57,7 @@ class StreamProcess(Process):
         app.router.add_post("/pair/token", self.handle_pair_token)
         app.router.add_get("/pair", self.handle_pair)
         app.router.add_post("/offer", self.handle_offer)
+        app.router.add_get("/snapshot", self.handle_snapshot)
 
         self.runner = web.AppRunner(app)
         await self.runner.setup()
@@ -76,6 +77,29 @@ class StreamProcess(Process):
         self.pcs.clear()
         if self.runner is not None:
             await self.runner.cleanup()
+
+    async def handle_snapshot(self, request: web.Request) -> web.Response:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ")
+        if not self.authenticator.validate_session_token(token):
+            return web.json_response({"error": "Invalid or missing token"}, status=401)
+
+        # Numpy array of the image
+        image_array, clip_id = await asyncio.to_thread(self.buffer.get)
+
+        if image_array is None:
+            return web.json_response({"error": "No image available"}, status=404)
+
+        encode_params = [cv2.IMWRITE_JPEG_QUALITY, 80]
+        success, buf = await asyncio.to_thread(cv2.imencode, ".jpg", image_array, encode_params)
+
+        if not success:
+            return web.json_response({"error": "Failed to encode image"}, status=500)
+
+        return web.Response(
+            body=buf.tobytes(),
+            content_type="image/jpeg",
+            headers={"X-Clip-Id": str(clip_id)},
+        )
 
     async def handle_cert(self, request: web.Request) -> web.FileResponse | web.Response:
         if not os.path.exists("cert.pem"):
