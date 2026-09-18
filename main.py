@@ -12,6 +12,13 @@ from zeroconf import ServiceInfo, Zeroconf
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(processName)s %(levelname)s %(message)s")
 set_start_method("spawn", force=True)  # Use 'spawn' to avoid issues with OpenCV and PyTorch in child processes
 
+import socket
+
+def get_lan_ip() -> str:
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.connect(("8.8.8.8", 80))  # No data is sent.
+        return sock.getsockname()[0]
+
 def main():
     storage_task_queue = Queue()
     stop_event = Event()
@@ -25,7 +32,7 @@ def main():
     # Set up Zeroconf service for mDNS advertisement
     device_uuid = config.getString("device_uuid", uuid.uuid4().hex)
     hostname = socket.gethostname()
-    local_ip = socket.gethostbyname(hostname)
+    local_ip = get_lan_ip()
     camera_port = 8080
 
     service_type = "_camera._tcp.local."
