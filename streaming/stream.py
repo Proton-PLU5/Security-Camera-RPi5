@@ -9,6 +9,7 @@ from streaming.auth.authentication import Authenticator
 from capture.capture import CaptureBuffer
 from capture.detect import DetectionBuffer
 from streaming.camera_video_track import CameraVideoTrack
+import cv2
 
 class StreamProcess(Process):
     def __init__(self, 
