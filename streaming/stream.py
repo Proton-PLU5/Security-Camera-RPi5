@@ -165,9 +165,27 @@ class StreamProcess(Process):
 
         clip_id = request.match_info.get("clip_id")
 
-        clip_path = f"{self.clips_dir}/clip_{clip_id}.mp4"
+        # Resolve the recorded file from the database instead of rebuilding a
+        # filename from the ID.  Clip IDs are UUIDs while historic recordings
+        # have timestamp-based filenames (and their path format may vary).
+        # Reconstructing the path caused valid old clips to be served as a 404
+        # JSON response, which Android exposed as a generic video error.
+        connection = sqlite.connect(self.storage_db_path, timeout=5.0)
+        try:
+            cursor = connection.cursor()
+            cursor.execute("SELECT file_path FROM clips WHERE id = ?", (clip_id,))
+            clip_row = cursor.fetchone()
+        finally:
+            connection.close()
 
-        if not os.path.exists(clip_path):
+        if clip_row is None:
+            return web.json_response(
+                {"error": f"Clip with ID {clip_id} not found"},
+                status=404,
+            )
+
+        clip_path = clip_row[0]
+        if not os.path.isfile(clip_path):
             return web.json_response(
                 {"error": f"Clip with ID {clip_id} not found"},
                 status=404,
