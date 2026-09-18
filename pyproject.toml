@@ -13,6 +13,7 @@ dependencies = [
     "ncnn>=1.0.20260526",
     "onnx>=1.22.0",
     "onnxruntime>=1.27.0",
+    "opencv-python-headless>=4.14.0.94",
     "picamera2>=0.3.36",
     "prompt-toolkit>=3.0.52",
     "pyfiglet>=1.0.4",
