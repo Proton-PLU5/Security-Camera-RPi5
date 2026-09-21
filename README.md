@@ -2,11 +2,7 @@
 
 This project captures frames from a Raspberry Pi camera using Picamera2 and streams them as MJPEG to a Flask webserver. The camera also broadcasts UDP discovery packets so mobile apps can automatically find it on the network.
 
-
-
-https://github.com/user-attachments/assets/403850c4-d269-485e-8b9a-8a7339b6c442
-
-
+https://github.com/user-attachments/assets/f5a943ba-e7e2-4561-83d6-b6f399645a2e
 
 ## Features
 - MJPEG video streaming via HTTP
