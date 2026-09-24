@@ -9,6 +9,7 @@ from streaming.auth.authentication import Authenticator
 from capture.capture import CaptureBuffer
 from capture.detect import DetectionBuffer
 from streaming.camera_video_track import CameraVideoTrack
+import cv2
 
 class StreamProcess(Process):
     def __init__(self, 
@@ -36,6 +37,8 @@ class StreamProcess(Process):
         self.pcs: set[RTCPeerConnection] = set()
     
     def run(self):
+        # This process has its own event loop. Keep it here so the HTTP server
+        # and WebRTC connections can be closed when the stop event is set.
         self.authenticator = Authenticator(self.storage_db_path)
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
@@ -79,6 +82,7 @@ class StreamProcess(Process):
             await self.runner.cleanup()
 
     async def handle_snapshot(self, request: web.Request) -> web.Response:
+        # Encode the current shared frame only when a client asks for a still.
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if not self.authenticator.validate_session_token(token):
             return web.json_response({"error": "Invalid or missing token"}, status=401)
@@ -108,6 +112,8 @@ class StreamProcess(Process):
         return web.FileResponse("cert.pem")
 
     async def handle_get_detections_for_clip(self, request: web.Request) -> web.Response:
+        # The app needs offsets from the start of the video so it can draw each
+        # detection box at the right point during playback.
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if not self.authenticator.validate_session_token(token):
             return web.json_response({"error": "Invalid or missing token"}, status=401)
@@ -165,9 +171,27 @@ class StreamProcess(Process):
 
         clip_id = request.match_info.get("clip_id")
 
-        clip_path = f"{self.clips_dir}/clip_{clip_id}.mp4"
+        # Resolve the recorded file from the database instead of rebuilding a
+        # filename from the ID.  Clip IDs are UUIDs while historic recordings
+        # have timestamp-based filenames (and their path format may vary).
+        # Reconstructing the path caused valid old clips to be served as a 404
+        # JSON response, which Android exposed as a generic video error.
+        connection = sqlite.connect(self.storage_db_path, timeout=5.0)
+        try:
+            cursor = connection.cursor()
+            cursor.execute("SELECT file_path FROM clips WHERE id = ?", (clip_id,))
+            clip_row = cursor.fetchone()
+        finally:
+            connection.close()
 
-        if not os.path.exists(clip_path):
+        if clip_row is None:
+            return web.json_response(
+                {"error": f"Clip with ID {clip_id} not found"},
+                status=404,
+            )
+
+        clip_path = clip_row[0]
+        if not os.path.isfile(clip_path):
             return web.json_response(
                 {"error": f"Clip with ID {clip_id} not found"},
                 status=404,
@@ -180,6 +204,7 @@ class StreamProcess(Process):
         return {key: value for key, value in zip(fields, row)}
 
     async def handle_get_clips_before(self, request: web.Request) -> web.Response:
+        # The client sends seconds; stored clip times are milliseconds.
 
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if not self.authenticator.validate_session_token(token):
@@ -210,6 +235,8 @@ class StreamProcess(Process):
         return web.json_response(clips)
 
     async def handle_detection_websocket(self, request: web.Request) -> web.WebSocketResponse | web.Response:
+        # Send a new message only when the detection process has published a
+        # different snapshot. The version avoids repeating the same boxes.
         
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if not self.authenticator.validate_session_token(token):
@@ -234,6 +261,8 @@ class StreamProcess(Process):
         return ws
 
     async def handle_offer(self, request: web.Request) -> web.Response:
+        # Each viewer gets its own peer connection but reads frames from the
+        # same capture buffer.
         params = await request.json()
 
         # Check for valid token

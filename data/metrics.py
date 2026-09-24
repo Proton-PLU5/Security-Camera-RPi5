@@ -17,6 +17,8 @@ class MetricStats:
     samples: Deque[float] = field(default_factory=lambda: deque(maxlen=200))
  
     def add(self, value: float):
+        # Keep the full totals for lifetime stats and a smaller window for
+        # spotting recent slowdowns.
         self.count += 1
         self.total += value
         self.min = min(self.min, value)

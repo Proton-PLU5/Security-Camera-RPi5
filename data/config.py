@@ -10,6 +10,8 @@ class Config:
         self.configurations = self.load_configurations()
 
     def load_configurations(self):
+        # First run may not have a config file yet. Keep the empty document in
+        # memory so defaults can be filled in as they are requested.
         document = tomlkit.parse(Path(self.config_file).read_text()) if Path(self.config_file).exists() else tomlkit.document()
         return document
 
@@ -18,6 +20,8 @@ class Config:
             tomlkit.dump(self.configurations, f)
 
     def getString(self, key: str, default="") -> str:
+        # Missing keys are added here so save_configurations() writes out the
+        # defaults that the rest of the app actually used.
         if key not in self.configurations:
             self.configurations[key] = default
 

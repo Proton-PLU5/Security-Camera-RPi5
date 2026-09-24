@@ -26,6 +26,8 @@ class FaceRecognition:
         self.lock = threading.Lock()
 
     def load_known_face_encodings_and_names(self, encodings_dir):
+        # Each .pkl file holds one known face. Its filename is the name we
+        # return when that face is matched later.
         known_face_encodings = []
         known_face_names = []
         if not os.path.exists(encodings_dir):
@@ -72,6 +74,8 @@ class FaceRecognition:
         face_encodings = face_recognition.face_encodings(rgb_image, face_locations)
 
         recognised_faces = []
+        # Work from a copy of the known faces. Someone may add a new face from
+        # another thread while this frame is being checked.
         with self.lock:
             known_encodings = list(self.known_face_encodings)
             known_names = list(self.known_face_names)
@@ -114,6 +118,8 @@ class FaceRecognitionThread(threading.Thread):
         self.stop_event = threading.Event()
 
     def run(self):
+        # The queue blocks until a crop arrives. Once recognized, attach the
+        # result to the clip that the crop came from.
         while not self.stop_event.is_set():
             
             job : Optional[FaceCropJob] = self.queue.get()  # This will block until a new job is available

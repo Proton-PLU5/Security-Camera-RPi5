@@ -11,12 +11,9 @@ class CameraVideoTrack(VideoStreamTrack):
         self.buffer = buffer
         self.lowres_size = lowres_size
 
-    '''
-        this method is called by the aiortc library to get the next video frame to send over the WebRTC connection. 
-        It retrieves a frame from the CaptureBuffer, converts it to a VideoFrame object, and sets the presentation timestamp (pts) 
-        and time base for synchronization.
-    '''
     async def recv(self) -> VideoFrame:
+        # aiortc calls this whenever it needs another frame. The timestamp
+        # keeps playback in order for the remote viewer.
         with metrics.time("stream_receive"):
             frame, clip_id = self.buffer.get()
 

@@ -46,7 +46,8 @@ class CaptureProcess(Process):
         self.current_clip_id = None
         self.detection_task_buffer = []
     def run(self):
-        # Setup
+        # The main stream is encoded to disk. The smaller lores stream is copied
+        # into shared memory for detection and the live viewer.
         self.camera = Picamera2()
         self.storage_task_factory : TaskFactory = TaskFactory()
 
@@ -121,7 +122,8 @@ class CaptureProcess(Process):
             logger.info("CaptureProcess stopped")
 
     def start_clip(self):
-        # Start a new clip by sending a start_clip task to the storage process
+        # Hold onto the start task for now. We only add the clip to storage if
+        # one of its detections is an allowed trigger.
         self.current_clip_id = uuid.uuid4().hex  # Generate a unique ID for the new clip
         self.current_clip_start = time.time() * 1000  # Reset the clip start time
         self.clip_has_detections = False  # Reset the detection flag for the new clip
@@ -142,7 +144,8 @@ class CaptureProcess(Process):
         )
 
     def end_clip(self):
-        # End the current clip by sending an end_clip task to the storage process
+        # Once recording stops, either keep the clip and its detections or
+        # discard the file if nothing interesting happened.
         if self.current_clip_id is None:
             return  # No clip to end
         
@@ -177,11 +180,12 @@ class CaptureProcess(Process):
         self.clip_detected_classes.clear()  # Clear the set of detected classes
 
     def process_detection_tasks(self):
+        # The storage process owns SQLite, so send each buffered detection as a
+        # task instead of writing to the database from the camera process.
         if self.current_clip_id is None:
             logger.warning("No current clip ID available for processing detection tasks.")
             return
 
-        # Process the detection tasks for the current clip
         if self.detection_task_buffer:
             for detection in self.detection_task_buffer:
                 if detection:  # Only process if there are detections

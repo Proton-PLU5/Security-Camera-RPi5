@@ -15,11 +15,15 @@ set_start_method("spawn", force=True)  # Use 'spawn' to avoid issues with OpenCV
 import socket
 
 def get_lan_ip() -> str:
+    # Use the address this machine would use to reach the network. The socket
+    # never sends anything to this address; it just tells us which interface won.
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.connect(("8.8.8.8", 80))  # No data is sent.
         return sock.getsockname()[0]
 
 def main():
+    # These buffers and queues are created here so each child process can share
+    # the same camera frames, detections, and storage tasks.
     storage_task_queue = Queue()
     stop_event = Event()
     lowres_size = (960, 544)  # Width, Height
