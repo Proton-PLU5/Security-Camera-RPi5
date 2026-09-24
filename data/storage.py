@@ -55,6 +55,8 @@ class StorageProcess(Process):
         self.retry_backoff = retry_backoff
 
     def create_tables(self, cursor):
+        # All writes go through this process, so it makes sure the schema is
+        # ready before taking any tasks off the queue.
         cursor.execute('''CREATE TABLE IF NOT EXISTS clips (
                             id TEXT PRIMARY KEY,
                             started_at REAL NOT NULL,
@@ -102,6 +104,8 @@ class StorageProcess(Process):
         cursor.execute('''CREATE INDEX IF NOT EXISTS idx_clips_id ON clips (id)''')
 
     def handle_command(self, conn, cursor, cmd, retry_heap, attempt):
+        # A database lock can clear on its own. Retry those failures briefly;
+        # keep other failures in dead_letter so they are not lost silently.
         try:
             self.execute(cursor, cmd)
             conn.commit()
@@ -158,6 +162,8 @@ class StorageProcess(Process):
             raise ValueError(f'Unknown command type: {cmd.type}')
 
     def run(self):
+        # Use one connection for all queued writes. This keeps the camera and
+        # detection processes from competing to write directly to SQLite.
         conn = sqlite3.connect(self.db_path, timeout=5.0)
         conn.execute('PRAGMA foreign_keys = ON')  # Enable foreign key support
         conn.execute('PRAGMA journal_mode = WAL')  # Use Write-Ahead Logging for better concurrency

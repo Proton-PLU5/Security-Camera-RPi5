@@ -37,6 +37,8 @@ class StreamProcess(Process):
         self.pcs: set[RTCPeerConnection] = set()
     
     def run(self):
+        # This process has its own event loop. Keep it here so the HTTP server
+        # and WebRTC connections can be closed when the stop event is set.
         self.authenticator = Authenticator(self.storage_db_path)
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
@@ -80,6 +82,7 @@ class StreamProcess(Process):
             await self.runner.cleanup()
 
     async def handle_snapshot(self, request: web.Request) -> web.Response:
+        # Encode the current shared frame only when a client asks for a still.
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if not self.authenticator.validate_session_token(token):
             return web.json_response({"error": "Invalid or missing token"}, status=401)
@@ -109,6 +112,8 @@ class StreamProcess(Process):
         return web.FileResponse("cert.pem")
 
     async def handle_get_detections_for_clip(self, request: web.Request) -> web.Response:
+        # The app needs offsets from the start of the video so it can draw each
+        # detection box at the right point during playback.
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if not self.authenticator.validate_session_token(token):
             return web.json_response({"error": "Invalid or missing token"}, status=401)
@@ -199,6 +204,7 @@ class StreamProcess(Process):
         return {key: value for key, value in zip(fields, row)}
 
     async def handle_get_clips_before(self, request: web.Request) -> web.Response:
+        # The client sends seconds; stored clip times are milliseconds.
 
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if not self.authenticator.validate_session_token(token):
@@ -229,6 +235,8 @@ class StreamProcess(Process):
         return web.json_response(clips)
 
     async def handle_detection_websocket(self, request: web.Request) -> web.WebSocketResponse | web.Response:
+        # Send a new message only when the detection process has published a
+        # different snapshot. The version avoids repeating the same boxes.
         
         token = request.headers.get("Authorization", "").removeprefix("Bearer ")
         if not self.authenticator.validate_session_token(token):
@@ -253,6 +261,8 @@ class StreamProcess(Process):
         return ws
 
     async def handle_offer(self, request: web.Request) -> web.Response:
+        # Each viewer gets its own peer connection but reads frames from the
+        # same capture buffer.
         params = await request.json()
 
         # Check for valid token

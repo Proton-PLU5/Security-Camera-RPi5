@@ -3,6 +3,8 @@ import time
 
 class TokenService:
     def __init__(self, expiry=3600):
+        # Session tokens live in memory. A restart clears them, even though
+        # the pairing secrets themselves are stored in the database.
         self.expiry = expiry
         self._tokens = {}   # token -> (pairing_secret, expires_at)
         self._devices = {}  # pairing_secret -> (token, expires_at)
@@ -11,6 +13,7 @@ class TokenService:
         return time.time()
 
     def generate_token(self, pairing_secret: str) -> str:
+        # Keep only the newest token for this pairing secret.
         old_token, _ = self._devices.get(pairing_secret, (None, None))
         if old_token:
             self._tokens.pop(old_token, None)
@@ -28,6 +31,8 @@ class TokenService:
             self._devices.pop(pairing_secret, None)
 
     def validate_token(self, token: str) -> bool:
+        # Every valid request extends the session. An idle client eventually
+        # needs to pair again after the expiry window passes.
         entry = self._tokens.get(token)
         if not entry:
             return False

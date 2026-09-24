@@ -7,11 +7,12 @@ logger = logging.getLogger(__name__)
 
 class CaptureBuffer:
     def __init__(self, shape, dtype=np.uint8):
+        # Write new frames to the inactive buffer, then switch which one
+        # readers use. That keeps writes away from the current snapshot.
         self.shape = shape
         self.dtype = dtype
         nbytes = int(np.prod(shape) * np.dtype(dtype).itemsize)
 
-        # Double buffering to avoid overwriting frames while processing
         self.shared_buffer_a = shared_memory.SharedMemory(create=True, size=nbytes)
         self.shared_buffer_b = shared_memory.SharedMemory(create=True, size=nbytes)
 
@@ -24,7 +25,8 @@ class CaptureBuffer:
         self.current_clip_id = uuid.uuid4().hex  # Track the current clip ID
 
     def get(self) -> tuple[np.ndarray, str]:
-        # Return the active buffer as a numpy array.
+        # Return a copy: the capture process can switch buffers as soon as we
+        # leave this method.
         active = self.active.value
         buf = self.shared_buffer_a.buf if active == 0 else self.shared_buffer_b.buf
         return np.ndarray(self.shape, dtype=self.dtype, buffer=buf).copy(), self.current_clip_id

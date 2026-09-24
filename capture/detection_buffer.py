@@ -30,12 +30,14 @@ class DetectionBuffer:
         return json.loads(payload.decode("utf-8"))
 
     def get_with_version(self) -> tuple[list[dict], int]:
-        # Return the latest detections snapshot along with its version
+        # Consumers compare versions so they do not process the same detection
+        # result over and over while waiting for the next frame.
         detections = self.get()
         version = self.version.value
         return detections, version
 
     def write(self, detections: list[dict]):
+        # Write the complete JSON payload before changing the active slot.
         payload = json.dumps(detections).encode("utf-8")
         if len(payload) > self.max_bytes:
             raise ValueError(f"Detections payload ({len(payload)} bytes) exceeds max_bytes ({self.max_bytes})")

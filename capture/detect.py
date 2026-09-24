@@ -26,6 +26,8 @@ class DetectProcess(Process):
         self.model_path = model_path
 
     def configure_ncnn(self):
+        # Set this before NCNN loads the model weights. Otherwise it can use
+        # more threads than the Pi has room for while the camera is running.
         # NCNN THREAD LIMITING
         _orig_load_param = ncnn.Net.load_param # type: ignore
 
@@ -36,6 +38,8 @@ class DetectProcess(Process):
         ncnn.Net.load_param = _load_param_with_thread_limit # type: ignore
 
     def run(self):
+        # Read the camera's smaller frames and share the detections with the
+        # capture and streaming processes.
         self.configure_ncnn()
         self.model = YOLO(self.model_path)  # Load the YOLO model
         self.task_factory = TaskFactory()

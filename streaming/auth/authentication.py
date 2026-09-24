@@ -10,6 +10,7 @@ class Authenticator():
         self.token_service = TokenService()
 
     def generate_pairing_secret(self) -> str:
+        # Pairing secrets are kept in SQLite so they survive a restart.
         pairing_secret = secrets.token_urlsafe(32)
 
         with sqlite3.connect(self.database_path) as conn:
